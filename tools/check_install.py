@@ -157,14 +157,16 @@ def main(argv=None):
         assert local["scope"] == "full" and local["artifact_integrity"]["files"] == 2
         assert local["record_integrity"]["state"] == "checked" and local["score"]["state"] == "unavailable"
         assert local["execution"] == local["model"]["state"] == "unverified"
-        prove(["verify", "receipt", "--offline"], expected=3)
+        prove(["verify", "receipt", "--offline", "--policy", "anchored"], expected=3)
+        friendly = prove(["verify", "receipt", "--offline"])
+        assert friendly["timestamp_checked"] is False and friendly["effective_policy"] == "integrity-only"
         inspection = prove(["inspect", "receipt"])
         assert inspection["verification"] == "not_performed" and inspection["inventory_count"] == 2
         assert inspection["receipt_id"] == sealed["receipt_id"]
 
         execute([str(interpreter), "-I", "-c", SYNTHETIC_ANCHORS,
                  str(receipt), str(workspace / "synthetic-chain.json")])
-        prove(["verify", "receipt", "--offline"], expected=3)
+        prove(["verify", "receipt", "--offline", "--policy", "anchored"], expected=3)
         coherent = prove(["verify", "receipt", "--offline", "--chain-cache", "synthetic-chain.json"])
         assert coherent["chain_view"]["trust"] == "external_explicit"
         assert coherent["chain_view"]["freshness"] == "cached_only"

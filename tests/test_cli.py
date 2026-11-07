@@ -97,7 +97,7 @@ def test_generic_source_free_workflow_inclusion_and_no_clobber(tmp_path):
     verified = report('verify', receipt, '--offline', '--policy', 'integrity-only',
                       '--chain-cache', tmp_path / 'does-not-exist')
     assert verified['score']['state'] == 'unavailable'
-    report('verify', receipt, code=3)
+    report('verify', receipt, '--policy', 'anchored', code=3)
     inclusion = tmp_path / 'inclusion.json'
     created = report('proof', 'create', receipt, '--index', '0', '--out', inclusion, '--without-proofs')
     assert created['data'] == {'index': 0, 'size': 2}
@@ -408,7 +408,7 @@ def test_manifest_inputs_are_bounded_regular_strict_data(tmp_path, kind):
 
 def test_minimum_confirmation_argument_and_verifier_report_passthrough(tmp_path):
     _, receipt, _, _, _ = generic(tmp_path)
-    value = report('verify', receipt, '--min-confirmations', '9', code=3)
+    value = report('verify', receipt, '--policy', 'anchored', '--min-confirmations', '9', code=3)
     assert value['minimum_confirmations'] == 9
     # A called verifier owns its exact shape/code, including unsupported evidence.
     patch = ("from tallylock import verify\n"

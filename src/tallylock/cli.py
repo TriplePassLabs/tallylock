@@ -18,7 +18,7 @@ LIMITATIONS = [
     "Timestamp submission is not completed anchoring; presence is unverified without independently selected chain evidence.",
 ]
 COMMANDS = {'init', 'pre-register', 'seal', 'anchor', 'upgrade', 'verify', 'inspect',
-            'recover-seal', 'recover-lock'}
+            'recover-seal', 'recover-lock', 'doctor', 'run', 'score', 'check'}
 
 
 class _Parser(argparse.ArgumentParser):
@@ -29,6 +29,15 @@ class _Parser(argparse.ArgumentParser):
     def error(self, message):
         # argparse includes arbitrary option values in its diagnostics.
         raise TallyLockError("Invalid command arguments", code=2)
+
+
+class _Commands:
+    # Every command takes --json/--human, including the nested proof and evidence actions.
+    def __init__(self, subparsers, common):
+        self._subparsers, self._common = subparsers, common
+
+    def add_parser(self, name, **kwargs):
+        return self._subparsers.add_parser(name, parents=[self._common], **kwargs)
 
 
 def _integer(value):
@@ -52,7 +61,10 @@ def _positive(value):
 def _parser():
     parser = _Parser(prog='tallylock', description='Freeze external outputs and verify receipts offline.')
     parser.add_argument('--version', action='version', version=__version__)
-    commands = parser.add_subparsers(dest='command', required=True)
+    common = _Parser(add_help=False)
+    common.add_argument('--json', action='store_true', help='Print one JSON report line')
+    common.add_argument('--human', action='store_true', help='Print a short plain-language summary')
+    commands = _Commands(parser.add_subparsers(dest='command', required=True), common)
     init = commands.add_parser('init', help='Create a fresh editable manifest')
     init.add_argument('--out', required=True, type=_path)
     init.add_argument('--name', default='Evaluation receipt')
@@ -78,19 +90,20 @@ def _parser():
     source.add_argument('receipt', nargs='?', type=_path)
     source.add_argument('--inclusion', type=_path)
     verify.add_argument('--offline', action='store_true', help='Accepted explicitly; verification is always offline')
-    verify.add_argument('--policy', choices=['anchored', 'integrity-only'], default='anchored')
+    verify.add_argument('--policy', choices=['anchored', 'integrity-only'],
+                        help='Default: anchored with --chain-cache, otherwise integrity-only')
     verify.add_argument('--chain-cache', type=_path)
     verify.add_argument('--min-confirmations', type=_positive, default=6)
     inspect = commands.add_parser('inspect', help='Bounded local presentation without verification')
     inspect.add_argument('receipt', type=_path)
     proof = commands.add_parser('proof', help='Record inclusion packages')
-    create = proof.add_subparsers(dest='action', required=True).add_parser('create')
+    create = proof.add_subparsers(dest='action', required=True).add_parser('create', parents=[common])
     create.add_argument('receipt', type=_path)
     create.add_argument('--index', type=_integer, required=True)
     create.add_argument('--out', required=True, type=_path)
     create.add_argument('--without-proofs', action='store_true')
     evidence = commands.add_parser('evidence', help='Explicit external chain evidence')
-    export = evidence.add_subparsers(dest='action', required=True).add_parser('export')
+    export = evidence.add_subparsers(dest='action', required=True).add_parser('export', parents=[common])
     export.add_argument('--bitcoin-rpc', required=True, metavar='CONFIG', type=_path)
     export.add_argument('--height', type=_integer, action='append', required=True)
     export.add_argument('--out', required=True, type=_path)
@@ -99,6 +112,20 @@ def _parser():
     lock = commands.add_parser('recover-lock', help='Recover only the explicitly observed abandoned lock')
     lock.add_argument('receipt', type=_path)
     lock.add_argument('--observed-sha256', required=True)
+    doctor = commands.add_parser('doctor', help='Read-only installation and receipt diagnostics')
+    doctor.add_argument('receipt', nargs='?', type=_path)
+    run = commands.add_parser('run', help='Run your command once and record the attempt: tallylock run -- CMD')
+    run.add_argument('--outputs', type=_path)
+    run.add_argument('--score-file', type=_path)
+    run.add_argument('--config', type=_path, action='append', default=[])
+    run.add_argument('--max-attempts', type=_positive, default=100)
+    run.add_argument('--no-anchor', action='store_true')
+    run.add_argument('--repeat', type=_positive, default=1)
+    run.add_argument('argv', nargs=argparse.REMAINDER)
+    score = commands.add_parser('score', help='Show the real score and claim line for a plan')
+    score.add_argument('--plan')
+    check = commands.add_parser('check', help='Check a pasted claim line against this repository')
+    check.add_argument('claim')
     return parser
 
 
@@ -291,18 +318,38 @@ def _dispatch(args, report, phase):
         return report
     if command == 'verify':
         from . import verify
+        policy = args.policy or ('anchored' if args.chain_cache else 'integrity-only')
         cache = None
-        if args.policy == 'anchored' and args.chain_cache:
+        if policy == 'anchored' and args.chain_cache:
             cache = _json_file(args.chain_cache)
-        options = {'policy': args.policy, 'chain_cache': cache, 'minimum_confirmations': args.min_confirmations}
-        if args.inclusion:
-            value = _json_file(args.inclusion)
-            phase[0] = 'local'
-            return verify.inclusion(value, **options).report
+        options = {'policy': policy, 'chain_cache': cache, 'minimum_confirmations': args.min_confirmations}
         phase[0] = 'local'
-        # Verifier owns opening/validating its receipt so all invoked failures
-        # retain the exact Verification.report rather than a CLI envelope.
-        return verify.full(_path(args.receipt), **options).report
+        if args.inclusion:
+            result = verify.inclusion(_json_file(args.inclusion), **options).report
+        else:
+            # Verifier owns opening/validating its receipt so all invoked failures
+            # retain the exact Verification.report rather than a CLI envelope.
+            result = verify.full(_path(args.receipt), **options).report
+        if args.policy is None and result.get('format') == 'prove.verification.v1':
+            result['effective_policy'] = policy
+            result['timestamp_checked'] = policy == 'anchored'
+        return result
+    if command == 'doctor':
+        from . import doctor
+        checks = doctor.install_checks()
+        if args.receipt is not None:
+            phase[0] = 'local'
+            try:
+                with _receipt(args.receipt) as (directory, pinned):
+                    inspection = _inspect(directory)
+            except (TallyLockError, OSError):
+                checks.append(doctor.unreadable(args.receipt))
+            else:
+                states = {target: value['state'] for target, value in inspection['proofs'].items()}
+                checks.append(doctor.timestamp_check(args.receipt, states, inspection['receipt_id'] is not None))
+        return doctor.report(checks)
+    if command in ('run', 'score', 'check'):
+        return _tally_command(command, args, phase)
     if command == 'evidence.export':
         from . import evidence
         report['output'] = str(_path(args.out))
@@ -373,11 +420,93 @@ def _anchor(receipt, targets, action, report, phase):
     phase[0] = 'local'
 
 
-def _emit(report):
+def _repo():
+    import subprocess
+    try:
+        top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, timeout=30)
+    except OSError:
+        raise TallyLockError("git is required for run, score and check", code=2) from None
+    if top.returncode:
+        raise TallyLockError("Run this inside a git repository", code=2)
+    return Path(top.stdout.decode().strip())
+
+
+class _Shown(TallyLockError):
+    # Messages written by the run/score/check commands themselves; safe to show as-is.
+    pass
+
+
+def _tally_command(command, args, phase):
+    try:
+        return _tally(command, args, phase)
+    except _Shown:
+        raise
+    except TallyLockError as error:
+        raise _Shown(error.message, code=error.code) from None
+
+
+def _tally(command, args, phase):
+    from . import ledger, tally
+    repo = _repo()
+    phase[0] = 'local'
+    if command == 'run':
+        argv = args.argv[1:] if args.argv[:1] == ['--'] else args.argv
+        if not argv:
+            raise TallyLockError("Give the command to run after --", code=2)
+        configs = []
+        for config in args.config:
+            try:
+                configs.append(config.resolve().relative_to(repo.resolve()))
+            except ValueError:
+                raise TallyLockError(f"Config file must be inside the repository: {config}", code=2) from None
+        plan = ledger.start_plan(repo, argv, configs=tuple(configs), max_attempts=args.max_attempts)
+        stdout = None if args.human_mode else sys.stderr.buffer
+        results = [ledger.run_attempt(plan, outputs=args.outputs, score_file=args.score_file,
+                                      stdout=stdout, anchor=not args.no_anchor) for _ in range(args.repeat)]
+        report = {**results[-1], 'code': 0}
+        if args.repeat > 1:
+            report['repeat'] = [{key: item[key] for key in ('seq', 'outcome', 'exit_code', 'score')} for item in results]
+        return report
+    if command == 'score':
+        plans = ledger.list_plans(repo)
+        if args.plan:
+            plans = [plan for plan in plans if plan.startswith(args.plan)]
+            if len(plans) != 1:
+                raise TallyLockError("No single plan matches that ID", code=3)
+        if not plans:
+            raise TallyLockError("No runs recorded yet. Start with: tallylock run -- YOUR_COMMAND", code=3)
+        plan_id = max(plans, key=lambda item: (repo/'.tallylock'/'plans'/item/'ledger.jsonl').stat().st_mtime_ns
+                      if (repo/'.tallylock'/'plans'/item/'ledger.jsonl').exists() else 0)
+        summary = tally.plan_summary(repo, plan_id)
+        overview = tally.repo_summary(repo)
+        claim = tally.format_claim(summary, overview) if summary['attempts'] else None
+        half = tally._fields(summary, overview['count'])['half'] if summary['attempts'] else None
+        return {'format': 'tallylock.score.v1', 'code': 0, 'plan': summary, 'half_display': half,
+                'plans_in_repo': overview['count'], 'claim': claim}
+    verdict = tally.check_claim(repo, args.claim)
+    return {**verdict, 'code': 0 if verdict['verdict'] == 'match' else 3}
+
+
+def _human_mode(argv):
+    argv = argv[:argv.index('--')] if '--' in argv else argv
+    flags = {'--json', '--human'} & set(argv)
+    if len(flags) == 1:
+        return flags == {'--human'}
+    try:
+        return sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _emit(report, human=False, context=None):
     if sys.stdout is None or getattr(sys.stdout, 'closed', False):
         return 5
     try:
-        sys.stdout.write(json.dumps(report, ensure_ascii=True, separators=(',', ':')) + '\n')
+        if human:
+            from . import render
+            sys.stdout.write(render.human(report, context))
+        else:
+            sys.stdout.write(json.dumps(report, ensure_ascii=True, separators=(',', ':')) + '\n')
         sys.stdout.flush()
         return report['code']
     except OSError:
@@ -405,6 +534,8 @@ def _diagnostic(error, stage):
                 'local': 'Local operation failed',
                 'anchor': 'Timestamp action failed; completed local work is retained',
                 'output': 'Output could not be published'}[stage]
+    if isinstance(error, _Shown) and isinstance(error.message, str):
+        return error.message
     if not isinstance(error, TallyLockError) or stage in ('arguments', 'anchor'):
         return fallback
     text = error.message
@@ -459,6 +590,8 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     report = _report(_recognized(argv))
     phase = ['arguments']
+    human = _human_mode(argv)
+    context = {}
     try:
         parser = _parser()
         if not argv:
@@ -468,8 +601,14 @@ def main(argv=None) -> int:
             args = parser.parse_args(argv)
         except SystemExit as error:
             return int(error.code)
+        if args.json and args.human:
+            raise TallyLockError("Invalid command arguments", code=2)
+        human = args.human or (not args.json and human)
+        args.human_mode = human
+        selected = getattr(args, 'receipt', None)
+        context = {'receipt': None if selected is None else str(selected)}
         phase[0] = 'input'
-        return _emit(_dispatch(args, report, phase))
+        return _emit(_dispatch(args, report, phase), human, context)
     except KeyboardInterrupt:
         report['code'] = 130
         if phase[0] == 'anchor':
@@ -482,4 +621,4 @@ def main(argv=None) -> int:
     except Exception:
         report['code'] = 5
         report['errors'] = [{'stage': phase[0], 'code': 5, 'message': 'Internal command failure'}]
-    return _emit(report)
+    return _emit(report, human, context)

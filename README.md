@@ -19,7 +19,9 @@ python -m pip install /absolute/path/to/tallylock-0.1.0a1-py3-none-any.whl
 tallylock --version
 ```
 
-From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies. No unpublished PyPI release is assumed; distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
+From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies. No unpublished PyPI release is assumed.
+
+Future install path (after the first PyPI release): `pipx install tallylock`. It does not work yet, so use the reviewed wheel above for now. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
 
 The [offline quickstart](docs/QUICKSTART.md) uses only the installed CLI, a fresh manifest and an ordinary output directory. It needs no model, provider account, research checkout or hosted service. `python -m tallylock` can replace `tallylock` in every command.
 
@@ -29,14 +31,14 @@ tallylock pre-register manifest.json --receipt receipt
 mkdir outputs
 printf 'ordinary external output\n' > outputs/result.txt
 tallylock seal receipt --artifacts outputs
-tallylock verify receipt --policy integrity-only --offline
+tallylock verify receipt
 ```
 
 Edit the manifest before preregistration. Run your external evaluation program yourself and pass its output directory to `seal`. TallyLock never launches a model or executes a scorer named in metadata. See [generic integration](docs/INTEGRATION.md) for explicit score/trace options, bounded reports and recovery.
 
-Anchoring is explicit: `tallylock anchor receipt`, then `tallylock upgrade receipt` as calendars gain attestations. Submission and pending proofs are not completed anchoring. Default `tallylock verify receipt` requires qualifying Bitcoin attestations and an explicitly selected local chain cache. Verification never contacts a node or calendar. Independently assess the cache's provenance and freshness.
+Anchoring is explicit: `tallylock anchor receipt`, then `tallylock upgrade receipt` as calendars gain attestations. Submission and pending proofs are not completed anchoring. Plain `tallylock verify receipt` checks integrity and reports the timestamp as not checked, exiting 0 when integrity passes. With `--chain-cache FILE` it also runs the anchored check. `--policy anchored` is the strict form: it requires qualifying Bitcoin attestations and an explicitly selected local chain cache, and exits 3 without them. Verification never contacts a node or calendar. Independently assess the cache's provenance and freshness.
 
-Reports are one JSON object per stdout line, except help/version. Statuses are 0 for the requested action/check, 2 invalid input, 3 insufficient evidence, 4 unsupported evidence, 5 operational failure and 130 interruption. A returned timestamp action can still be pending or retry-wait. After optional anchoring fails, completed local state and IDs remain in the report. Resume with `anchor`/`upgrade` without the original outputs.
+Output is one JSON object per stdout line when piped and a short plain-language summary on a terminal. Force either with `--json` or `--human` (not both). `tallylock doctor [RECEIPT]` checks the installation and a receipt's timestamp state without writing or using the network. Statuses are 0 for the requested action/check, 2 invalid input, 3 insufficient evidence, 4 unsupported evidence, 5 operational failure and 130 interruption. A returned timestamp action can still be pending or retry-wait. After optional anchoring fails, completed local state and IDs remain in the report. Resume with `anchor`/`upgrade` without the original outputs.
 
 Static examples and canonical conformance assets ship under `tallylock/data/examples/basic` and `tallylock/data/conformance`, accessible through `importlib.resources`. Basic use requires no optional harness importer.
 
@@ -50,6 +52,15 @@ Static examples and canonical conformance assets ship under `tallylock/data/exam
 ## License
 
 Licensed under [Apache-2.0](LICENSE). Copyright 2026 Christopher Ayers.
+
+## Record every run
+
+```sh
+tallylock run --repeat 5 -- python eval.py --seed {seed}
+tallylock score
+```
+
+Every attempt is recorded, including failures. `score` reports the best result, the real score with its range, and a claim line others can check with `tallylock check`. See [the quickstart](docs/QUICKSTART.md#record-every-run-and-get-the-real-score) and [the method](docs/METHODS.md).
 
 ## What a receipt means
 
