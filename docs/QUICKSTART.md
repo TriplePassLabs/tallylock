@@ -17,7 +17,7 @@ python -m pip install /absolute/path/to/tallylock-0.1.0a1-py3-none-any.whl
 tallylock --version
 ```
 
-Future install path (after the first PyPI release): `pipx install tallylock`. It does not work yet, so use the reviewed wheel above for now.
+Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a1 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs.
 
 Run `tallylock doctor` to check the Python version, the `tallylock` on your PATH and the packaged data. It writes nothing and uses no network.
 

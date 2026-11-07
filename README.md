@@ -19,9 +19,9 @@ python -m pip install /absolute/path/to/tallylock-0.1.0a1-py3-none-any.whl
 tallylock --version
 ```
 
-From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies. No unpublished PyPI release is assumed.
+From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies.
 
-Future install path (after the first PyPI release): `pipx install tallylock`. It does not work yet, so use the reviewed wheel above for now. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
+Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a1 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
 
 The [offline quickstart](docs/QUICKSTART.md) uses only the installed CLI, a fresh manifest and an ordinary output directory. It needs no model, provider account, research checkout or hosted service. `python -m tallylock` can replace `tallylock` in every command.
 

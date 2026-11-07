@@ -58,7 +58,9 @@ Also required in Phase 1: SECURITY.md with a private reporting address, a `requi
 
 ## Build order and demand gate
 
-Recommended, not yet approved:
+Decision, Chris, 2026-11-07: the slice (items 1, 2 and 4) shipped as tallylock 0.1.0a1 on PyPI. Chris chose to build all of Phase 1 now without waiting on the demand test. The gate below is kept for the record and is waived. The 60-day kill rule in the exit test still applies after the Phase 1 release.
+
+Original recommendation:
 
 1. **Two-week slice:** items 1, 2 and 4 (install, one-command ledger, the real score and claim line). Then run the next Colony Zero experiment through it. This gives the lab checkable results and a publishable methods note on its own.
 2. **Demand test during the slice:** contact 10 eval researchers, the proofbundle and falsify maintainers, and at least one benchmark or leaderboard maintainer. Before claiming novelty, check whether `compare` and noise-floor ties already exist in eval harnesses (lm-eval, for example, already reports standard errors).
