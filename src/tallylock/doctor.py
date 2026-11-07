@@ -73,8 +73,8 @@ def timestamp_check(receipt, states, sealed):
     if 'pending' in values:
         return _check('TL-DOC-TS-PENDING', 'warn', 'The timestamp was requested and is not complete yet.',
                       f'tallylock upgrade {receipt}')
-    return _check('TL-DOC-TS-PRESENT', 'ok', 'Timestamp proofs are present. They are not checked until you supply evidence.',
-                  f'tallylock verify {receipt} --chain-cache CACHE_FILE')
+    return _check('TL-DOC-TS-PRESENT', 'ok', 'Timestamp proofs are present. Check them with verify --online.',
+                  f'tallylock verify {receipt} --online')
 
 
 def unreadable(receipt):

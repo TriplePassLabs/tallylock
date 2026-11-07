@@ -24,12 +24,15 @@ _LIMITATIONS = [
     'No trusted execution-time or no-hidden-attempt guarantee is established.',
     'Safely read bytes do not establish future filesystem immutability against same-UID writers.',
 ]
+_PROVIDER_LIMITATION = ('Provider headers are checked for proof-of-work and links only; '
+                        'full consensus is not validated and two providers can still agree on a false chain.')
 
 
 @dataclass(frozen=True)
 class Verification:
     code: int
     report: dict
+    evidence: dict | None = None
 
 
 def _anchor(state='not_checked') -> dict:
@@ -58,6 +61,7 @@ class _Report:
             'resources': {'state': 'not_checked', 'totals': None, 'known_lower_bounds': None},
             'errors': [], 'limitations': list(_LIMITATIONS),
         }
+        self.evidence = None
         if scope == 'inclusion':
             self.value['limitations'].append(
                 'Inclusion does not check artifacts, full record history, resources, coverage or scoring.')
@@ -75,11 +79,16 @@ class _Report:
                 message = f'{stage}: {_state(error)} evidence or prerequisites.'
             self.value['errors'].append({'stage': stage, 'code': code, 'message': message})
 
-    def options(self, policy, minimum) -> bool:
-        if isinstance(policy, str) and policy in ('anchored', 'integrity-only'):
+    def options(self, policy, minimum, evidence=None) -> bool:
+        if isinstance(policy, str) and policy in ('anchored', 'integrity-only', 'provider-pow'):
             self.value['policy'] = policy
         else:
             self.error('options', TallyLockError('unsupported verification policy'))
+        if policy == 'provider-pow':
+            self.value['provider_pow'] = {'state': 'not_checked'}
+            self.value['limitations'].append(_PROVIDER_LIMITATION)
+        elif evidence is not None:
+            self.error('options', TallyLockError('provider evidence requires the provider-pow policy'))
         if type(minimum) is int and 1 <= minimum <= canonical.MAX_SAFE_INTEGER:
             self.value['minimum_confirmations'] = minimum
         else:
@@ -87,7 +96,7 @@ class _Report:
         return not self.value['errors']
 
     def finish(self) -> Verification:
-        return Verification(self.value['code'], self.value)
+        return Verification(self.value['code'], self.value, self.evidence)
 
     def manifest(self, manifest: dict) -> None:
         self.value['registration_id'] = canonical.digest(manifest)
@@ -170,7 +179,7 @@ def _core(data: bytes, kind: str, manifest: dict | None = None) -> dict:
 
 
 def _chain(report: _Report, cache) -> chain.ChainView | None:
-    if report.value['policy'] == 'integrity-only':
+    if report.value['policy'] in ('integrity-only', 'provider-pow'):
         return None
     if cache is None:
         report.value['chain_view'] = {'state': 'unavailable'}
@@ -208,7 +217,46 @@ def _verify_anchor(report: _Report, kind: str, data: bytes | None, view: chain.C
             report.error(field, TallyLockError('insufficient anchored evidence', code=3))
 
 
-def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView | None) -> None:
+def _provider_anchors(report: _Report, proofs: dict, evidence: dict | None, fetch) -> None:
+    from . import headers
+    offline = evidence is not None
+    heights = set()
+    for kind, data in list(proofs.items()):
+        digest = report.value['registration_id' if kind == 'manifest' else 'receipt_id']
+        try:
+            if data is not None:
+                heights.update(anchors.inspect(data, digest)['bitcoin_heights'])
+        except TallyLockError as error:
+            report.value[f'{kind}_anchor'] = _anchor(_state(error))
+            report.error(f'{kind}_anchor', error)
+            del proofs[kind]
+    view = None
+    try:
+        if not offline and heights:
+            evidence = headers.observe(sorted(heights), **({} if fetch is None else {'fetch': fetch}))
+        if evidence is not None:
+            checked = headers.check(evidence)
+            view = checked.view
+            report.value['provider_pow'] = dict(checked.summary)
+            report.evidence = evidence
+    except TallyLockError as error:
+        report.value['provider_pow'] = {'state': _state(error)}
+        report.error('providers', error)
+        for kind in proofs:
+            report.value[f'{kind}_anchor'] = _anchor(_state(error))
+        return
+    for kind, data in proofs.items():
+        _verify_anchor(report, kind, data, view)
+    if view is not None:
+        counts = [report.value[f'{kind}_anchor']['confirmations'] for kind in proofs]
+        counts = [count for count in counts if count is not None]
+        report.value['provider_pow']['freshness'] = headers.freshness(
+            report.value['provider_pow']['observed_at'], min(counts) if counts else None,
+            report.value['minimum_confirmations'], offline=offline)
+
+
+def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView | None,
+                  evidence: dict | None = None, fetch=None) -> None:
     if report.value['policy'] == 'integrity-only':
         return
     try:
@@ -220,6 +268,7 @@ def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView |
                 report.value[field] = _anchor(_state(error))
                 report.error(field, error)
         return
+    proofs = {}
     for kind in ('manifest', 'result'):
         if report.value['registration_id' if kind == 'manifest' else 'receipt_id'] is None:
             continue
@@ -229,7 +278,12 @@ def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView |
             report.value[f'{kind}_anchor'] = _anchor(_state(error))
             report.error(f'{kind}_anchor', error)
         else:
-            _verify_anchor(report, kind, data, view)
+            if report.value['policy'] == 'provider-pow':
+                proofs[kind] = data
+            else:
+                _verify_anchor(report, kind, data, view)
+    if proofs:
+        _provider_anchors(report, proofs, evidence, fetch)
 
 
 def _artifact_check(report: _Report, directory: Directory, result: dict) -> None:
@@ -320,10 +374,10 @@ def _stability(directory: Directory, before: set[str] | None, cores: dict[str, b
 
 
 def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
-         minimum_confirmations: int = 6) -> Verification:
-    """Check all available receipt integrity evidence without writes or network."""
+         minimum_confirmations: int = 6, provider_evidence: dict | None = None, fetch=None) -> Verification:
+    """Check all available receipt integrity evidence without writes; provider-pow may fetch headers."""
     report = _Report('full')
-    if not report.options(policy, minimum_confirmations):
+    if not report.options(policy, minimum_confirmations, provider_evidence):
         return report.finish()
     try:
         receipt = _receipt_path(receipt)
@@ -361,7 +415,7 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
                 _artifact_check(report, directory, result)
                 _records_check(report, directory, manifest, result)
                 _score_check(report, directory, manifest, result)
-            _full_anchors(report, directory, view)
+            _full_anchors(report, directory, view, provider_evidence, fetch)
             try:
                 _stability(directory, before, cores)
             except TallyLockError as error:
@@ -394,10 +448,10 @@ def _trace_plausibility(value: dict) -> None:
 
 
 def inclusion(value: dict | bytes, *, policy='anchored', chain_cache: dict | None = None,
-              minimum_confirmations: int = 6) -> Verification:
+              minimum_confirmations: int = 6, provider_evidence: dict | None = None, fetch=None) -> Verification:
     """Check one event's committed membership with explicitly partial scope."""
     report = _Report('inclusion')
-    if not report.options(policy, minimum_confirmations):
+    if not report.options(policy, minimum_confirmations, provider_evidence):
         return report.finish()
     view = _chain(report, chain_cache)
     snapshot = None
@@ -427,11 +481,15 @@ def inclusion(value: dict | bytes, *, policy='anchored', chain_cache: dict | Non
     else:
         report.value['record_integrity'] = {'state': 'membership_checked', 'count': snapshot['size'],
                                             'root': snapshot['result']['records']['root']}
-    if report.value['policy'] == 'anchored':
+    if report.value['policy'] in ('anchored', 'provider-pow'):
+        proofs = {}
         for kind in ('manifest', 'result'):
             encoded = snapshot['proofs'][kind]
-            data = None if encoded is None else base64.b64decode(encoded, validate=True)
-            _verify_anchor(report, kind, data, view)
+            proofs[kind] = None if encoded is None else base64.b64decode(encoded, validate=True)
+            if report.value['policy'] == 'anchored':
+                _verify_anchor(report, kind, proofs[kind], view)
+        if report.value['policy'] == 'provider-pow':
+            _provider_anchors(report, proofs, provider_evidence, fetch)
     return report.finish()
 
 

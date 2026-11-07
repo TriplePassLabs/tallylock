@@ -115,7 +115,7 @@ def test_default_verify_human_says_not_checked_and_names_next_command(tmp_path):
     text = launch('verify', receipt, '--human')
     assert 'not checked' in text.lower()
     assert 'passed' in text.lower()
-    assert f'tallylock verify {receipt} --chain-cache' in text
+    assert f'tallylock verify {receipt} --online' in text
     assert 'who ran it' in text
     assert not BANNED.search(text)
     assert '{' not in text
@@ -310,7 +310,7 @@ def test_timestamp_state_mapping():
     assert doctor.timestamp_check('R', {'manifest': 'pending', 'result': 'pending'}, True)['id'] == 'TL-DOC-TS-PENDING'
     assert doctor.timestamp_check('R', {'manifest': 'pending', 'result': 'pending'}, True)['next'] == 'tallylock upgrade R'
     present = doctor.timestamp_check('R', {'manifest': 'attestation_present', 'result': 'attestation_present'}, True)
-    assert present['id'] == 'TL-DOC-TS-PRESENT' and 'tallylock verify R --chain-cache' in present['next']
+    assert present['id'] == 'TL-DOC-TS-PRESENT' and 'tallylock verify R --online' in present['next']
     assert doctor.timestamp_check('R', {'manifest': 'unsupported', 'result': 'missing'}, True)['id'] == 'TL-DOC-TS-UNSUPPORTED'
     assert doctor.timestamp_check('R', {'manifest': 'missing', 'result': 'core_missing'}, False)['id'] == 'TL-DOC-RECEIPT-UNSEALED'
 
@@ -339,11 +339,11 @@ def test_security_policy_points_to_private_advisories():
     assert '—' not in text
 
 
-def test_docs_mark_pipx_as_future_and_keep_the_wheel_path():
+def test_docs_show_the_pypi_install_and_keep_the_wheel_path():
     for name in ('README.md', 'docs/QUICKSTART.md'):
         text = (ROOT / name).read_text()
         assert 'pipx install tallylock' in text
-        assert 'after the first PyPI release' in text
+        assert 'after the first PyPI release' not in text
         assert 'wheel' in text.lower()
 
 

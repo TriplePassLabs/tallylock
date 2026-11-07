@@ -33,9 +33,17 @@ def _verify(report, context):
         lines.append(f"Checked: {artifacts['files']} files, {artifacts.get('bytes')} bytes, "
                      f"records {records.get('state')}, score {score}.")
     lines += [f"Detail: {error['message']}" for error in report.get('errors', [])]
-    if 'timestamp_checked' in report and not report['timestamp_checked']:
-        lines.append('Timestamp: not checked (no timestamp evidence file was supplied).')
-        lines.append(f'Next: tallylock verify {receipt} --chain-cache EVIDENCE_FILE')
+    pow_check = report.get('provider_pow') or {}
+    if pow_check.get('state') == 'checked':
+        tip = pow_check['tip']['height']
+        confirmations = min(tip - int(height) + 1 for height in pow_check['blocks_on_top'])
+        agreed = 'both public services agreed' if pow_check.get('providers_agreed') else 'the services disagreed'
+        lines.append(f"Timestamp: checked. {confirmations} later blocks confirm it, {agreed}, "
+                     f"and the work was checked on this computer ({pow_check['freshness']['label']}).")
+        lines.append('Not checked: full network consensus. Run your own node for that.')
+    elif 'timestamp_checked' in report and not report['timestamp_checked']:
+        lines.append('Timestamp: not checked.')
+        lines.append(f'Next: tallylock verify {receipt} --online')
     elif report.get('policy') == 'integrity-only':
         lines.append('Timestamp: not checked (integrity-only policy).')
     else:
@@ -152,6 +160,58 @@ def _check(report):
     return lines
 
 
+def _refresh(report):
+    lines = [f"Checked {len(report['plans'])} plans."]
+    for plan in report['plans']:
+        lines.append(f"- Plan {plan['plan_id'][:8]}: timestamps refreshed.")
+    return lines
+
+
+def _export(report):
+    lines = [f"Wrote the plan {report['plan_id'][:8]} {'bundle' if report['kind'] == 'bundle' else 'in-toto statement'} to {report['out']}."]
+    if report.get('note'):
+        lines.append(report['note'])
+    return lines
+
+
+def _registry_entry(report):
+    return [f"Added '{report['title']}' to the registry.", f"Claim: {report['claim']}"]
+
+
+def _registry_check(report):
+    lines = [f"Registry: {report['verified']} entries checked, {report['failed']} failed."]
+    lines += [f"- {item['plan_id'][:8]}: {item.get('reason', 'failed')}" for item in report['entries'] if not item['ok']]
+    return lines
+
+
+def _board(report):
+    return [f"Board written to {report['out']}: {report['rows']} entries, {report['excluded']} could not be checked."]
+
+
+def _compare(report):
+    return list(report.get('plain') or [f"Verdict: {report.get('verdict')}."])
+
+
+def _adapter(report):
+    if report['kind'] == 'inspect':
+        return [f"Read {len(report['records'])} attempts from the Inspect log. They are declared, not signed."]
+    result = report['result']
+    if result['ok']:
+        return [f"proofbundle checked: {result['trust']}."]
+    return [f"proofbundle rejected: {result['reason']}."]
+
+
+def _capabilities(report):
+    names = [item['name'] for item in report['commands'] if item['status'] == 'available']
+    return [f"{len(names)} commands: " + ', '.join(names) + '.', 'Use --json for the full machine-readable list.']
+
+
+_HUB = {'tallylock.refresh.v1': _refresh, 'tallylock.export.v1': _export,
+        'tallylock.registry-entry.v1': _registry_entry, 'tallylock.registry-verification.v1': _registry_check,
+        'tallylock.board.v1': _board, 'tallylock.compare.v1': _compare, 'tallylock.adapter-import.v1': _adapter,
+        'tallylock.capabilities.v1': _capabilities, 'tallylock.agent-guide.v1': lambda report: [report['markdown'].rstrip()]}
+
+
 def human(report, context=None):
     context = context or {}
     kind = report.get('format')
@@ -167,6 +227,8 @@ def human(report, context=None):
         lines = _score(report)
     elif kind == 'tallylock.claim-check.v1':
         lines = _check(report)
+    elif kind in _HUB:
+        lines = _HUB[kind](report)
     elif kind == 'prove.command.v1' and report['code'] == 0:
         lines = _command(report, context)
     elif kind == 'prove.command.v1':

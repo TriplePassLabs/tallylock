@@ -11,7 +11,8 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
 authors = [{name = "Christopher Ayers"}]
-dependencies = ["rfc8785==0.1.4", "opentimestamps==0.5.0", "python-bitcoinlib==0.12.2", "jsonschema==4.26.0"]
+dependencies = ["rfc8785==0.1.4", "opentimestamps==0.5.0", "python-bitcoinlib==0.12.2", "jsonschema==4.26.0",
+                "pycryptodomex==3.24.2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "build>=1,<2"]
@@ -28,7 +29,8 @@ where = ["src"]
 [tool.setuptools.package-data]
 tallylock = ["data/schemas/*.json", "data/conformance/*.json", "data/conformance/*.md",
          "data/conformance/cases/*.json", "data/examples/basic/*.json",
-         "data/examples/basic/*.md", "data/examples/basic/outputs/*"]
+         "data/examples/basic/*.md", "data/examples/basic/outputs/*", "data/tsa/*", "data/agent-guide.md",
+         "data/difficulty.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

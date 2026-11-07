@@ -109,3 +109,20 @@ tallylock check "PASTE THE CLAIM LINE HERE"
 ```
 
 `score` prints the best score, the real score (the mean of completed runs with a 95% range) and a claim line to paste into a paper or README. Failed runs are counted and shown, never averaged in. Changing the command or a `--config` file starts a new plan, and older plans stay visible. `check` recomputes every number in a claim line from the recorded runs. Commit `.tallylock/` to git if you want others to check your claim. See [the method](METHODS.md) for what the real score does and does not tell you.
+
+## Check timestamps, compare results and publish a board
+
+```sh
+tallylock verify RECEIPT --online --save-evidence evidence.json   # two public services, work checked locally
+tallylock verify RECEIPT --evidence evidence.json                 # re-check saved evidence offline
+tallylock run --setup setup.json --repeat 5 -- python eval.py --seed {seed}
+tallylock compare PLAN_A PLAN_B                                    # same setup? is the gap just noise?
+tallylock refresh                                                  # finish pending timestamps
+tallylock export PLAN --out bundle/                                # one plan that verifies on its own
+tallylock registry add registry/ bundle/ PLAN --title "My eval" --trust declared --submitted-by me
+tallylock board registry/ --out site/                              # static Receipts Board page
+tallylock adapters import inspect logs/run.eval                    # Inspect AI logs as declared attempts
+tallylock export PLAN --format intoto --out statement.json         # sign with cosign attest-blob
+```
+
+`--online` checks the block that holds your timestamp and the 100 blocks after it against the real difficulty of the network, and requires two public services to agree. It does not validate full network consensus. A setup file records the dataset, harness, model and decoding settings so `compare` can tell whether two results are comparable. Bundles include the full output of every run: read them before you publish. See [COMPARISON.md](COMPARISON.md) for how TallyLock relates to other tools and [RECEIPT_REQUEST.md](RECEIPT_REQUEST.md) for text reviewers can paste into a review. `tallylock capabilities` lists every command for AI assistants, and `tallylock agent-guide` prints their guide.

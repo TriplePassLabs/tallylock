@@ -62,6 +62,8 @@ tallylock score
 
 Every attempt is recorded, including failures. `score` reports the best result, the real score with its range, and a claim line others can check with `tallylock check`. See [the quickstart](docs/QUICKSTART.md#record-every-run-and-get-the-real-score) and [the method](docs/METHODS.md).
 
+More: check timestamps without running a node (`verify --online`), compare two results for setup and noise (`compare`), and publish a static Receipts Board from a registry of plans (`registry`, `board`). TallyLock also reads Inspect AI logs and proofbundle files, and exports in-toto statements. See [the quickstart](docs/QUICKSTART.md#check-timestamps-compare-results-and-publish-a-board) and [how it compares](docs/COMPARISON.md).
+
 ## What a receipt means
 
 A valid completed timestamp establishes that a commitment existed by a Bitcoin block. Artifact hashes reveal changes to committed bytes. Neither establishes that an evaluator ran honestly, used the claimed model, disclosed all attempts, or produced a scientifically sound result.

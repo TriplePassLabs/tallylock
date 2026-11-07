@@ -1,6 +1,7 @@
 """Plans of repeated attempts, their runs and the append-only run ledger."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import fcntl
 import hashlib
@@ -13,14 +14,17 @@ import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlsplit
 
 from opentimestamps.calendar import DEFAULT_AGGREGATORS
 
-from . import anchors, canonical, chain, schema, store, timestamping, transport, verify
+from . import anchors, canonical, chain, rfc3161, schema, store, timestamping, transport, verify
 from .errors import TallyLockError
 
 
 LEDGER_FORMAT = "tallylock.ledger-entry.v1"
+RECOVERED_FORMAT = "tallylock.ledger-recovered-entry.v1"
+SETUP_FORMAT = "tallylock.setup.v1"
 PLAN_FORMAT = "tallylock.plan.v1"
 KEY_FORMAT = "tallylock.plan-key.v1"
 ATTEMPT_FORMAT = "tallylock.attempt.v1"
@@ -31,6 +35,12 @@ _LINE_LIMIT = 4096
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _COMMIT = re.compile(r"[0-9a-f]{40}([0-9a-f]{24})?\Z")
 _PROOF = re.compile(r"ledger-head-([1-9][0-9]{0,15})\.ots\Z")
+_TOKEN = re.compile(r"ledger-head-([1-9][0-9]{0,15})\.([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\.tsr\Z")
+_HOST = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
+_SETUP_LIMIT = 64 * 1024
+_SETUP_OBJECTS = {"dataset": {"name", "version", "sha256"}, "harness": {"name", "version"},
+                  "model": {"name", "revision"}}
+_SETUP_FIELDS = {"format", "prompt_template_sha256", "decoding", "notes", *_SETUP_OBJECTS}
 _SCORE = re.compile(rb"tallylock: score=(?:([0-9]{1,15})(?:\.([0-9]{1,15}))?|([0-9]{1,15})/([0-9]{1,15}))[ \t]*\Z")
 _FIELDS = {"format", "plan_id", "seq", "attempt_id", "receipt_id", "outcome", "exit_code",
            "duration_ms", "score", "argv", "prev_sha256"}
@@ -154,8 +164,59 @@ def _score_file(path: Path) -> tuple[dict | None, bytes | None]:
     return (value, data) if valid else (None, None)
 
 
-def plan_identity(repo: Path, argv, *, configs=(), max_attempts: int = 100, git=None) -> dict:
-    """Digest the commit, tracked changes, command, declared configs and attempt budget."""
+def _text(value, label, limit=256):
+    _require(isinstance(value, str) and 0 < len(value) <= limit,
+             f"setup field {label} must be nonempty text up to {limit} characters")
+
+
+def validate_setup(value) -> dict:
+    """Check a tallylock.setup.v1 object and return it with its format named."""
+    _require(isinstance(value, dict), "the setup file must hold a JSON object")
+    for key in value:
+        _require(key in _SETUP_FIELDS, f"the setup file has an unknown field {key!r}")
+    _require(value.get("format", SETUP_FORMAT) == SETUP_FORMAT, f"the setup file format must be {SETUP_FORMAT}")
+    for name, allowed in _SETUP_OBJECTS.items():
+        if name not in value:
+            continue
+        _require(isinstance(value[name], dict), f"setup field {name} must be an object")
+        for key, item in value[name].items():
+            _require(key in allowed, f"setup field {name} has an unknown field {key!r}")
+            if key == "sha256":
+                _require(isinstance(item, str) and _HEX.fullmatch(item),
+                         f"setup field {name}.sha256 must be 64 lowercase hex characters")
+            else:
+                _text(item, f"{name}.{key}")
+    if "prompt_template_sha256" in value:
+        _require(isinstance(value["prompt_template_sha256"], str) and _HEX.fullmatch(value["prompt_template_sha256"]),
+                 "setup field prompt_template_sha256 must be 64 lowercase hex characters")
+    if "decoding" in value:
+        decoding = value["decoding"]
+        _require(isinstance(decoding, dict) and len(decoding) <= 64, "setup field decoding must be an object")
+        for key, item in decoding.items():
+            _require(0 < len(key) <= 64, "setup field decoding names must be 1 to 64 characters")
+            _require(type(item) in (str, int, bool) and (type(item) is not str or len(item) <= 256),
+                     "setup field decoding values must be strings, integers or booleans")
+    if "notes" in value:
+        _text(value["notes"], "notes", 4096)
+    return {**value, "format": SETUP_FORMAT}
+
+
+def read_setup(path) -> dict:
+    """Read and check a JSON setup file; floats are refused, so decimals are written as strings."""
+    path = Path(path)
+    _require(path.is_file(), f"setup file {str(path)!r} was not found")
+    _require(path.stat().st_size <= _SETUP_LIMIT, "the setup file exceeds 64 KiB")
+    try:
+        value = canonical.loads(path.read_bytes())
+    except TallyLockError as error:
+        raise TallyLockError(f"the setup file is not valid JSON: {error.message}. "
+                             "Write decimals as strings.") from None
+    return validate_setup(value)
+
+
+def plan_identity(repo: Path, argv, *, configs=(), max_attempts: int = 100, setup: dict | None = None,
+                  git=None) -> dict:
+    """Digest the commit, tracked changes, command, declared configs, setup and attempt budget."""
     git = _git if git is None else git
     repo = Path(repo)
     _require(isinstance(argv, (list, tuple)) and argv and all(isinstance(a, str) and a for a in argv),
@@ -183,6 +244,8 @@ def plan_identity(repo: Path, argv, *, configs=(), max_attempts: int = 100, git=
         digests[relative.as_posix()] = hashlib.sha256((repo/relative).read_bytes()).hexdigest()
     identity = {"format": KEY_FORMAT, "head": head, "diff_sha256": hashlib.sha256(diff).hexdigest(),
                 "argv": list(argv), "configs": digests, "max_attempts": max_attempts}
+    if setup is not None:
+        identity["setup"] = validate_setup(setup)
     identity["key"] = canonical.digest(identity)
     return identity
 
@@ -216,10 +279,11 @@ def list_plans(repo: Path) -> list[str]:
     return [plan_id for _, plan_id in sorted(found)]
 
 
-def start_plan(repo: Path, argv, *, configs=(), max_attempts: int = 100, git=None) -> Plan:
+def start_plan(repo: Path, argv, *, configs=(), max_attempts: int = 100, setup=None, git=None) -> Plan:
     """Resolve the plan for this exact setup, freezing a new one when the key changed."""
     repo = Path(repo)
-    identity = plan_identity(repo, argv, configs=configs, max_attempts=max_attempts, git=git)
+    setup = None if setup is None else read_setup(setup)
+    identity = plan_identity(repo, argv, configs=configs, max_attempts=max_attempts, setup=setup, git=git)
     existing = list_plans(repo)
     for plan_id in existing:
         if load_plan(repo, plan_id)["metadata"]["tallylock_plan"]["key"] == identity["key"]:
@@ -255,7 +319,7 @@ def _read(repo: Path, plan_id: str) -> tuple[list[dict], list[bytes]]:
             entry = canonical.loads(line)
         except TallyLockError:
             raise LedgerError("malformed", f"ledger line {number} is not valid JSON") from None
-        if (not isinstance(entry, dict) or set(entry) != _FIELDS or entry["format"] != LEDGER_FORMAT
+        if (not isinstance(entry, dict) or set(entry) != _FIELDS or entry["format"] not in (LEDGER_FORMAT, RECOVERED_FORMAT)
                 or entry["plan_id"] != plan_id or type(entry["seq"]) is not int or entry["seq"] < 1
                 or canonical.dumps(entry) != line):
             raise LedgerError("malformed", f"ledger line {number} is not a canonical ledger entry")
@@ -280,6 +344,59 @@ def ledger_head(repo: Path, plan_id: str) -> str | None:
     load_plan(repo, plan_id)
     _, lines = _read(repo, plan_id)
     return hashlib.sha256(lines[-1]).hexdigest() if lines else None
+
+
+@contextmanager
+def _lock(directory: Path):
+    with open(directory/"run.lock", "a+b") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise TallyLockError("another tallylock run is using this plan", code=5) from None
+        yield
+
+
+def _recover(plan_id: str, manifest: dict, directory: Path, entries: list, lines: list) -> list[int]:
+    """Append entries for sealed attempts the ledger lost; the caller holds the run lock."""
+    info = manifest["metadata"]["tallylock_plan"]
+    recovered = []
+    while len(entries) < len(manifest["attempts"]):
+        seq = len(entries) + 1
+        receipt = directory/"attempts"/f"run-{seq}"
+        if not (receipt/"result.json").exists():
+            break
+        if verify.full(receipt, policy="integrity-only").code != 0:
+            raise LedgerError("receipt_invalid", f"sealed attempt run-{seq} failed verification and cannot be recovered")
+        data = (receipt/"result.json").read_bytes()
+        result = canonical.loads(data)
+        attempt = result["metadata"].get("tallylock_attempt")
+        aggregate = result["score"]["aggregate"] if result["score"] is not None else None
+        if not (result["registration_id"] == plan_id and result["attempt_id"] == f"run-{seq}"
+                and isinstance(attempt, dict) and attempt.get("format") == ATTEMPT_FORMAT
+                and attempt.get("argv") == info["argv"] and attempt.get("score") == aggregate):
+            raise LedgerError("receipt_invalid", f"sealed attempt run-{seq} does not belong to this plan")
+        entry = {"format": RECOVERED_FORMAT, "plan_id": plan_id, "seq": seq, "attempt_id": f"run-{seq}",
+                 "receipt_id": hashlib.sha256(data).hexdigest(), "outcome": result["outcome"],
+                 "exit_code": attempt["exit_code"], "duration_ms": attempt["duration_ms"], "score": aggregate,
+                 "argv": list(info["argv"]), "prev_sha256": hashlib.sha256(lines[-1]).hexdigest() if lines else None}
+        entries.append(entry)
+        lines.append(canonical.dumps(entry))
+        recovered.append(seq)
+    if recovered:
+        _write(directory/"ledger.jsonl", b"".join(item + b"\n" for item in lines))
+    return recovered
+
+
+def recover(repo: Path, plan_id: str) -> dict:
+    """Append ledger entries for attempts sealed before a crash, marked as recovered; idempotent."""
+    repo = Path(repo)
+    manifest = load_plan(repo, plan_id)
+    directory = repo/".tallylock"/"plans"/plan_id
+    with _lock(directory):
+        entries, lines = _read(repo, plan_id)
+        recovered = _recover(plan_id, manifest, directory, entries, lines)
+    return {"format": "tallylock.ledger-recovery.v1", "plan_id": plan_id,
+            "state": "recovered" if recovered else "unchanged", "recovered": recovered}
 
 
 def _submit(origin, commitment, **options):
@@ -315,6 +432,127 @@ def anchor_head(repo: Path, plan_id: str, *, seq: int | None = None, submit=None
     _write(path, proof, replace=False)
     state = "attestation_present" if anchors.inspect(proof, head)["bitcoin_heights"] else "pending"
     return {**report, "state": state}
+
+
+def upgrade_heads(repo: Path, plan_id: str, *, upgrade=None) -> dict:
+    """Ask calendars to complete pending ledger-head proofs, newest head first, within one bounded budget."""
+    upgrade = transport.upgrade if upgrade is None else upgrade
+    repo = Path(repo)
+    load_plan(repo, plan_id)
+    directory = repo/".tallylock"/"plans"/plan_id
+    with _lock(directory):
+        _, lines = _read(repo, plan_id)
+        stored = sorted(((int(match.group(1)), path) for path in directory.iterdir()
+                         if (match := _PROOF.fullmatch(path.name))), reverse=True)
+        heads, warnings, count = [], [], 0
+        deadline = time.monotonic() + 120
+        for seq, path in stored:
+            if seq > len(lines):
+                raise LedgerError("removed", f"anchored ledger head {seq} is missing from the ledger")
+            _require(path.stat().st_size <= anchors.MAX_PROOF_BYTES, "ledger head proof exceeds its byte limit")
+            head = hashlib.sha256(lines[seq - 1]).hexdigest()
+            original = proof = path.read_bytes()
+            try:
+                info = anchors.inspect(proof, head)
+            except TallyLockError:
+                raise LedgerError("anchor_mismatch", f"anchored ledger head {seq} does not match the ledger") from None
+            attempts = failures = 0
+            deferred = []
+            jobs = [] if info["bitcoin_heights"] else timestamping._jobs(f"head {seq}", proof, None, head, "upgrade", warnings)
+            for _, origin, commitment, _ in jobs:
+                if count >= 8 or time.monotonic() >= deadline:
+                    deferred.append(int(time.time()) + 300)
+                    continue
+                count += 1
+                attempts += 1
+                try:
+                    response = upgrade(origin, commitment, deadline=deadline)
+                except transport.RetryDeferred as error:
+                    deferred.append(error.next_retry_at)
+                    continue
+                except TallyLockError as error:
+                    if error.code != 5:
+                        raise
+                    failures += 1
+                    if len(warnings) < 16:
+                        warnings.append(f"head {seq}: calendar request failed")
+                    continue
+                if response is None:
+                    continue
+                try:
+                    proof = timestamping._merge(proof, head, None, commitment, response)
+                except TallyLockError:
+                    failures += 1
+                    if len(warnings) < 16:
+                        warnings.append(f"head {seq}: invalid calendar proof")
+            if proof != original:
+                history = directory/"proof-history"/f"ledger-head-{seq}"
+                history.mkdir(parents=True, exist_ok=True)
+                backup = history/f"{hashlib.sha256(original).hexdigest()}.ots"
+                if not backup.exists():
+                    _write(backup, original, replace=False)
+                _write(path, proof)
+                info = anchors.inspect(proof, head)
+                state = "attestation_present" if info["bitcoin_heights"] else "pending"
+            elif deferred:
+                state = "retry_wait"
+            elif attempts and failures == attempts:
+                state = "failed"
+            else:
+                state = "unchanged"
+            heads.append({"seq": seq, "state": state, "proof": f".tallylock/plans/{plan_id}/{path.name}",
+                          "bitcoin_heights": info["bitcoin_heights"], "pending_count": info["pending_count"],
+                          "next_retry_at": min(deferred) if deferred else None})
+    return {"format": "tallylock.ledger-upgrade.v1", "plan_id": plan_id, "heads": heads, "warnings": warnings}
+
+
+def _services(tsas) -> list[tuple[str, str]]:
+    tsas = rfc3161.DEFAULT_TSAS if tsas is None else tsas
+    _require(isinstance(tsas, (list, tuple)) and 1 <= len(tsas) <= 8, "list one to eight timestamp services")
+    found = []
+    for url in tsas:
+        try:
+            parsed = urlsplit(url)
+            host = parsed.hostname
+            valid = (parsed.scheme in {"http", "https"} and host is not None and _HOST.fullmatch(host)
+                     and parsed.username is None and parsed.password is None)
+        except (TypeError, ValueError, AttributeError):
+            valid = False
+        _require(valid, f"timestamp service {url!r} is not an http or https URL")
+        _require(host not in {known for _, known in found}, f"timestamp service host {host} is listed twice")
+        found.append((url, host))
+    return found
+
+
+def timestamp_head(repo: Path, plan_id: str, *, seq: int | None = None, tsas=None, post=None) -> dict:
+    """Get an RFC 3161 token for one ledger head from each service; failures are reported, never raised."""
+    services = _services(tsas)
+    load_plan(repo, plan_id)
+    _, lines = _read(repo, plan_id)
+    _require(lines, "the ledger is empty. Run an attempt first.", code=3)
+    seq = len(lines) if seq is None else seq
+    _require(type(seq) is int and 1 <= seq <= len(lines), "no such ledger entry")
+    head = hashlib.sha256(lines[seq - 1]).hexdigest()
+    results = []
+    for url, host in services:
+        relative = f".tallylock/plans/{plan_id}/ledger-head-{seq}.{host}.tsr"
+        path = Path(repo)/relative
+        item = {"url": url, "tsa": host, "state": "failed", "token": None, "time": None, "signer": None, "reason": None}
+        try:
+            if path.exists():
+                _require(path.stat().st_size <= rfc3161.TOKEN_LIMIT, "the stored timestamp token is too large")
+                checked, state = rfc3161.verify(path.read_bytes(), bytes.fromhex(head)), "unchanged"
+            else:
+                data, checked = rfc3161.request(url, bytes.fromhex(head), post=post)
+                _write(path, data, replace=False)
+                state = "stamped"
+            item.update(state=state, token=relative, time=checked["time"], signer=checked["tsa"])
+        except TallyLockError as error:
+            item["reason"] = error.message
+        results.append(item)
+    good = sum(item["state"] != "failed" for item in results)
+    return {"format": "tallylock.ledger-tsa.v1", "plan_id": plan_id, "seq": seq, "head_sha256": head,
+            "state": "stamped" if good == len(results) else "partial" if good else "failed", "tsas": results}
 
 
 def _view(chain_cache):
@@ -377,10 +615,31 @@ def verify_ledger(repo: Path, plan_id: str, *, chain_cache: dict | None = None,
         except TallyLockError:
             raise LedgerError("anchor_mismatch", f"anchored ledger head {seq} does not match the ledger") from None
         proofs.append({"seq": seq, "state": state})
+    stamps = []
+    for path in directory.iterdir():
+        match = _TOKEN.fullmatch(path.name)
+        if match is None:
+            continue
+        seq = int(match.group(1))
+        if seq > len(lines):
+            raise LedgerError("removed", f"timestamped ledger head {seq} is missing from the ledger")
+        item = {"seq": seq, "tsa": match.group(2), "state": "verified", "time": None, "signer": None, "reason": None}
+        try:
+            data = path.read_bytes() if path.stat().st_size <= rfc3161.TOKEN_LIMIT else None
+            checked = rfc3161.verify(data, bytes.fromhex(hashlib.sha256(lines[seq - 1]).hexdigest()))
+            item.update(time=checked["time"], signer=checked["tsa"])
+        except rfc3161.TSAError as error:
+            if error.kind == "imprint":
+                raise LedgerError("timestamp_mismatch", f"timestamped ledger head {seq} does not match the ledger") from None
+            item.update(state="rejected", reason=error.kind)
+        stamps.append(item)
     return {"format": "tallylock.ledger-verification.v1", "plan_id": plan_id,
             "plan_number": info["plan_number"], "entries": len(entries), "receipts_verified": len(entries),
             "head_sha256": hashlib.sha256(lines[-1]).hexdigest() if lines else None,
-            "anchors": sorted(proofs, key=lambda item: item["seq"]), "ledger": entries}
+            "anchors": sorted(proofs, key=lambda item: item["seq"]),
+            "instant_timestamps": sorted(stamps, key=lambda item: (item["seq"], item["tsa"])),
+            "recovered": [entry["seq"] for entry in entries if entry["format"] == RECOVERED_FORMAT],
+            "ledger": entries}
 
 
 def _pump(source, sink, path: Path, scanner: _Scanner | None, stats: dict) -> None:
@@ -402,18 +661,16 @@ def _pump(source, sink, path: Path, scanner: _Scanner | None, stats: dict) -> No
 
 def run_attempt(plan: Plan, *, outputs: Path | None = None, score_file: Path | None = None,
                 stdout=None, stderr=None, cwd: Path | None = None, anchor: bool = True,
-                calendar_submit=None) -> dict:
+                calendar_submit=None, tsa: bool | None = None, tsas=None, tsa_post=None) -> dict:
     """Run the caller's command once, seal its receipt and append one ledger entry."""
     stdout = sys.stdout.buffer if stdout is None else stdout
     stderr = sys.stderr.buffer if stderr is None else stderr
     manifest = load_plan(plan.repo, plan.plan_id)
     directory = plan.directory
-    with open(directory/"run.lock", "a+b") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise TallyLockError("another tallylock run is using this plan", code=5) from None
+    with _lock(directory):
         entries, lines = _read(plan.repo, plan.plan_id)
+        # A crash after sealing leaves a receipt the ledger lacks; append it, marked, before running again.
+        recovered = _recover(plan.plan_id, manifest, directory, entries, lines)
         seq = len(entries) + 1
         _require(seq <= len(manifest["attempts"]),
                  f"this plan has used all {len(manifest['attempts'])} attempts. "
@@ -486,9 +743,18 @@ def run_attempt(plan: Plan, *, outputs: Path | None = None, score_file: Path | N
                 anchored = {"state": done["state"], "submitted": True, "seq": seq, "proof": done["proof"]}
             except TallyLockError as error:
                 anchored = {"state": "pending", "submitted": False, "seq": seq, "proof": None, "warning": error.message}
+        instant = {"state": "not_requested"}
+        # Instant timestamps follow the anchor choice unless asked for separately; failures only report.
+        if anchor if tsa is None else tsa:
+            try:
+                done = timestamp_head(plan.repo, plan.plan_id, seq=seq, tsas=tsas, post=tsa_post)
+                instant = {"state": done["state"], "seq": seq, "tsas": done["tsas"]}
+            except TallyLockError as error:
+                instant = {"state": "failed", "seq": seq, "tsas": [], "warning": error.message}
     return {"format": "tallylock.run.v1", "plan_id": plan.plan_id, "seq": seq, "attempt_id": attempt_id,
             "executed_argv": executed,
             "receipt": f".tallylock/plans/{plan.plan_id}/attempts/{attempt_id}", "receipt_id": entry["receipt_id"],
             "outcome": outcome, "reason": None if exit_code == 0 else f"exit code {exit_code}",
             "exit_code": exit_code, "duration_ms": duration_ms, "score": score,
-            "ledger_head": hashlib.sha256(line).hexdigest(), "anchor": anchored}
+            "ledger_head": hashlib.sha256(line).hexdigest(), "anchor": anchored, "instant": instant,
+            "recovered": recovered}

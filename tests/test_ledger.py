@@ -6,15 +6,17 @@ import io
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
 from bitcoin.core import CBlockHeader
 from opentimestamps.core.notary import BitcoinBlockHeaderAttestation
 
-from tallylock import canonical, store, verify
+from tallylock import canonical, rfc3161, store, transport, verify
 from tallylock.errors import TallyLockError
 from test_chain import cache_for
+from test_rfc3161 import Forge, recorded
 from test_transport import reply, attested_reply
 
 
@@ -75,6 +77,7 @@ class Project:
 
     def run(self, plan, **options):
         options.setdefault("anchor", False)
+        options.setdefault("tsa", False)
         options.setdefault("stdout", io.BytesIO())
         options.setdefault("stderr", io.BytesIO())
         return api().run_attempt(plan, **options)
@@ -471,3 +474,305 @@ def test_seed_placeholder_keeps_one_plan(tmp_path):
     entries = [json.loads(line) for line in ledger_lines(plan)]
     assert [entry["argv"] for entry in entries] == [argv, argv]
     assert ledger.verify_ledger(project.repo, plan.plan_id)["entries"] == 2
+
+
+SETUP = {"dataset": {"name": "gsm8k", "version": "1.0", "sha256": "ab" * 32},
+         "harness": {"name": "lm-eval", "version": "0.4.2"}, "prompt_template_sha256": "cd" * 32,
+         "decoding": {"temperature": "0.7", "max_tokens": 512, "greedy": False},
+         "model": {"name": "qwen", "revision": "main"}, "notes": "first pass"}
+
+
+def write_setup(project, value, name="setup.json"):
+    path = project.repo/name
+    path.write_text(value if isinstance(value, str) else json.dumps(value))
+    return path
+
+
+def plan_info(plan):
+    return canonical.loads((plan.directory/"manifest.json").read_bytes())["metadata"]["tallylock_plan"]
+
+
+def test_setup_file_is_frozen_into_the_plan_and_its_identity(tmp_path):
+    ledger = api()
+    project = Project(tmp_path, [{"stdout": "tallylock: score=1\n"}])
+    plain = project.plan()
+    assert "setup" not in plan_info(plain)
+    assert "setup" not in ledger.plan_identity(project.repo, project.argv, configs=["config.toml"], git=FakeGit())
+    path = write_setup(project, SETUP)
+    plan = project.plan(setup=path)
+    assert plan.created and plan.plan_id != plain.plan_id
+    assert plan_info(plan)["setup"] == {"format": "tallylock.setup.v1", **SETUP}
+    assert plan.key == ledger.plan_identity(project.repo, project.argv, configs=["config.toml"],
+                                            setup=ledger.read_setup(path), git=FakeGit())["key"]
+    # Reformatting the file or naming its format keeps the plan; changing a value starts a new one.
+    path.write_text(json.dumps(SETUP, indent=2, sort_keys=True))
+    assert project.plan(setup=path).plan_id == plan.plan_id
+    write_setup(project, {"format": "tallylock.setup.v1", **SETUP})
+    assert project.plan(setup=path).plan_id == plan.plan_id
+    write_setup(project, {**SETUP, "notes": "second pass"})
+    assert project.plan(setup=path).created is True
+    write_setup(project, {})
+    assert plan_info(project.plan(setup=path))["setup"] == {"format": "tallylock.setup.v1"}
+    project.run(plan)
+    assert ledger.verify_ledger(project.repo, plan.plan_id)["entries"] == 1
+
+
+@pytest.mark.parametrize("text, words", [
+    ('{"decoding": {"temperature": 0.7}}', "decimals as strings"),
+    ('{"seed": 1}', "seed"),
+    ('{"dataset": {"name": "x", "size": "3"}}', "size"),
+    ('{"dataset": {"sha256": "' + "AB" * 32 + '"}}', "sha256"),
+    ('{"prompt_template_sha256": "abc"}', "prompt_template_sha256"),
+    ('{"decoding": {"stop": ["a"]}}', "decoding"),
+    ('{"decoding": {"top_p": null}}', "decoding"),
+    ('{"format": "tallylock.setup.v2"}', "tallylock.setup.v1"),
+    ('[]', "object"),
+    ('{"notes": 5}', "notes"),
+    ('{"model": "qwen"}', "model"),
+    ('{"harness": {"name": ""}}', "harness"),
+    ('{"notes": "a", "notes": "b"}', "JSON"),
+    ('{"notes": "' + "x" * 70000 + '"}', "64 KiB"),
+    ("not json", "JSON"),
+])
+def test_setup_file_rejections_are_clear(tmp_path, text, words):
+    project = Project(tmp_path, [])
+    with pytest.raises(TallyLockError) as error:
+        project.plan(setup=write_setup(project, text))
+    assert words in error.value.message
+    assert not (project.repo/".tallylock").exists()
+
+
+def test_missing_setup_file(tmp_path):
+    project = Project(tmp_path, [])
+    with pytest.raises(TallyLockError) as error:
+        project.plan(setup=project.repo/"absent.json")
+    assert "not found" in error.value.message
+
+
+def crash_after_seal(project, plan):
+    """Run once more, then drop the last ledger line as a crash between seal and append would."""
+    project.run(plan)
+    lines = ledger_lines(plan)
+    rewrite(plan, lines[:-1])
+    return lines[-1]
+
+
+def test_recover_appends_the_sealed_attempt_once_and_verify_reports_it(tmp_path):
+    ledger = api()
+    project = Project(tmp_path, [{"stdout": "tallylock: score=1/4\n"}, {"exit": 3}, {"stdout": "tallylock: score=1\n"},
+                                 {"stdout": "tallylock: score=0\n"}])
+    plan = project.plan()
+    project.run(plan)
+    assert ledger.recover(project.repo, plan.plan_id) == {
+        "format": "tallylock.ledger-recovery.v1", "plan_id": plan.plan_id, "state": "unchanged", "recovered": []}
+    lost = crash_after_seal(project, plan)
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.verify_ledger(project.repo, plan.plan_id)
+    assert error.value.kind == "removed"
+    report = ledger.recover(project.repo, plan.plan_id)
+    assert report["state"] == "recovered" and report["recovered"] == [2]
+    lines = ledger_lines(plan)
+    assert canonical.loads(lines[-1][:-1]) == {**canonical.loads(lost[:-1]),
+                                               "format": "tallylock.ledger-recovered-entry.v1"}
+    assert ledger.recover(project.repo, plan.plan_id)["state"] == "unchanged"
+    assert ledger_lines(plan) == lines
+    checked = ledger.verify_ledger(project.repo, plan.plan_id)
+    assert checked["entries"] == 2 and checked["recovered"] == [2]
+    assert checked["ledger"][1]["outcome"] == "failed" and checked["ledger"][1]["exit_code"] == 3
+    # Relabelling the recovered entry as an ordinary one breaks the chain to later entries.
+    project.run(plan)
+    assert ledger.verify_ledger(project.repo, plan.plan_id)["recovered"] == [2]
+    lines = ledger_lines(plan)
+    rewrite(plan, [lines[0], edit_line(lines[1], format="tallylock.ledger-entry.v1"), lines[2]])
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.verify_ledger(project.repo, plan.plan_id)
+    assert error.value.kind == "edited"
+
+
+def test_run_recovers_a_missing_entry_instead_of_blocking(tmp_path):
+    ledger = api()
+    project = Project(tmp_path, [{"stdout": "tallylock: score=1\n"}] * 3)
+    plan = project.plan()
+    project.run(plan)
+    crash_after_seal(project, plan)
+    report = project.run(plan)
+    assert report["seq"] == 3 and report["recovered"] == [2]
+    checked = ledger.verify_ledger(project.repo, plan.plan_id)
+    assert checked["entries"] == 3 and checked["recovered"] == [2]
+    assert ledger.recover(project.repo, plan.plan_id)["recovered"] == []
+
+
+def test_recover_refuses_a_damaged_sealed_attempt(tmp_path):
+    ledger = api()
+    project = Project(tmp_path, [{"stdout": "tallylock: score=1\n"}] * 3)
+    plan = project.plan()
+    project.run(plan)
+    crash_after_seal(project, plan)
+    (plan.directory/"attempts/run-2/artifacts/stdout.log").write_bytes(b"changed")
+    before = ledger_lines(plan)
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.recover(project.repo, plan.plan_id)
+    assert error.value.kind == "receipt_invalid"
+    with pytest.raises(ledger.LedgerError):
+        project.run(plan)
+    assert ledger_lines(plan) == before
+
+
+def pending_heads(project, plan, *seqs):
+    for seq in seqs:
+        api().anchor_head(project.repo, plan.plan_id, seq=seq, submit=lambda origin, commitment, **kw: reply(commitment, origin))
+
+
+def test_upgrade_heads_replaces_pending_proofs_and_keeps_history(tmp_path):
+    ledger = api()
+    project, plan, _ = three_runs(tmp_path)
+    pending_heads(project, plan, 2, 3)
+    pending = (plan.directory/"ledger-head-3.ots").read_bytes()
+    headers, calls = [], []
+    def upgrade(origin, commitment, **kwargs):
+        calls.append(origin)
+        headers.append(CBlockHeader(hashMerkleRoot=commitment, nTime=1700000000).serialize())
+        return attested_reply(commitment, BitcoinBlockHeaderAttestation(1))
+    report = ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=upgrade)
+    assert report["format"] == "tallylock.ledger-upgrade.v1" and report["plan_id"] == plan.plan_id
+    assert [(h["seq"], h["state"], h["bitcoin_heights"]) for h in report["heads"]] == [
+        (3, "attestation_present", [1]), (2, "attestation_present", [1])]
+    assert len(calls) == 8
+    history = plan.directory/"proof-history"/"ledger-head-3"/(hashlib.sha256(pending).hexdigest() + ".ots")
+    assert history.read_bytes() == pending
+    cache = cache_for({1: headers[0]}, tip_height=6)
+    assert ledger.verify_anchor(project.repo, plan.plan_id, 3, chain_cache=cache)["state"] == "anchored"
+    assert [a["seq"] for a in ledger.verify_ledger(project.repo, plan.plan_id)["anchors"]] == [2, 3]
+    again = ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=upgrade)
+    assert [h["state"] for h in again["heads"]] == ["unchanged", "unchanged"] and len(calls) == 8
+
+
+def test_upgrade_heads_reports_waits_failures_and_no_news(tmp_path):
+    ledger = api()
+    project, plan, _ = three_runs(tmp_path)
+    assert ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=None)["heads"] == []
+    pending_heads(project, plan, 3)
+    before = (plan.directory/"ledger-head-3.ots").read_bytes()
+    due = int(time.time()) + 600
+    def wait(origin, commitment, **kwargs):
+        raise transport.RetryDeferred(due)
+    head = ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=wait)["heads"][0]
+    assert head["state"] == "retry_wait" and head["next_retry_at"] == due and head["pending_count"] == 4
+    def down(origin, commitment, **kwargs):
+        raise TallyLockError("calendar request failed after bounded retries", code=5)
+    report = ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=down)
+    assert report["heads"][0]["state"] == "failed" and report["warnings"]
+    def garbage(origin, commitment, **kwargs):
+        return b"not a proof"
+    assert ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=garbage)["heads"][0]["state"] == "failed"
+    assert ledger.upgrade_heads(project.repo, plan.plan_id,
+                                upgrade=lambda origin, commitment, **kw: None)["heads"][0]["state"] == "unchanged"
+    assert (plan.directory/"ledger-head-3.ots").read_bytes() == before
+    with open(plan.directory/"run.lock", "a+b") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        with pytest.raises(TallyLockError) as error:
+            ledger.upgrade_heads(project.repo, plan.plan_id, upgrade=wait)
+        assert error.value.code == 5
+
+
+TSAS = ("https://tsa.one.test/tsr", "http://tsa.two.test")
+
+
+@pytest.fixture
+def tsa(monkeypatch):
+    forge = Forge(label="Ledger")
+    monkeypatch.setattr(rfc3161, "trusted_roots", lambda: (forge.root,))
+    calls = []
+    def post(url, body, **kwargs):
+        calls.append(url)
+        if "down" in url:
+            raise TallyLockError("timestamp request failed after bounded retries", code=5)
+        digest, size = body[24:56], body[57]
+        nonce = int.from_bytes(body[58:58 + size], "big")
+        return forge.reply(digest, nonce=nonce + 1 if "stale" in url else nonce)
+    return forge, post, calls
+
+
+def test_timestamp_head_stores_tokens_that_verify_offline(tmp_path, tsa):
+    ledger = api()
+    forge, post, calls = tsa
+    project, plan, _ = three_runs(tmp_path)
+    report = ledger.timestamp_head(project.repo, plan.plan_id, tsas=TSAS, post=post)
+    head = ledger.ledger_head(project.repo, plan.plan_id)
+    assert report["format"] == "tallylock.ledger-tsa.v1" and report["seq"] == 3 and report["head_sha256"] == head
+    assert report["state"] == "stamped" and calls == list(TSAS)
+    first, second = report["tsas"]
+    assert first == {"url": TSAS[0], "tsa": "tsa.one.test", "state": "stamped", "time": "2026-11-07T12:00:00Z",
+                     "signer": "Ledger Test TSA", "reason": None,
+                     "token": f".tallylock/plans/{plan.plan_id}/ledger-head-3.tsa.one.test.tsr"}
+    assert second["token"].endswith("ledger-head-3.tsa.two.test.tsr")
+    token = (project.repo/first["token"]).read_bytes()
+    assert rfc3161.verify(token, bytes.fromhex(head))["time"] == "2026-11-07T12:00:00Z"
+    checked = ledger.verify_ledger(project.repo, plan.plan_id)
+    assert checked["instant_timestamps"] == [
+        {"seq": 3, "tsa": "tsa.one.test", "state": "verified", "time": "2026-11-07T12:00:00Z",
+         "signer": "Ledger Test TSA", "reason": None},
+        {"seq": 3, "tsa": "tsa.two.test", "state": "verified", "time": "2026-11-07T12:00:00Z",
+         "signer": "Ledger Test TSA", "reason": None}]
+    again = ledger.timestamp_head(project.repo, plan.plan_id, tsas=TSAS, post=post)
+    assert [item["state"] for item in again["tsas"]] == ["unchanged", "unchanged"] and len(calls) == 2
+    older = ledger.timestamp_head(project.repo, plan.plan_id, seq=1, tsas=TSAS[:1], post=post)
+    assert older["seq"] == 1 and older["state"] == "stamped"
+    assert [item["seq"] for item in ledger.verify_ledger(project.repo, plan.plan_id)["instant_timestamps"]] == [1, 3, 3]
+
+
+@pytest.mark.parametrize("tsas", [(), ("ftp://tsa.test",), ("https://tsa.test/a", "https://tsa.test/b"), "https://tsa.test"])
+def test_timestamp_service_list_is_checked(tmp_path, tsa, tsas):
+    project, plan, _ = three_runs(tmp_path)
+    with pytest.raises(TallyLockError):
+        api().timestamp_head(project.repo, plan.plan_id, tsas=tsas, post=tsa[1])
+
+
+def test_timestamp_failures_are_reported_and_never_fail_a_run(tmp_path, tsa):
+    _, post, calls = tsa
+    project = Project(tmp_path, [{"stdout": "tallylock: score=1\n"}] * 4)
+    plan = project.plan()
+    assert project.run(plan)["instant"] == {"state": "not_requested"} and calls == []
+    report = project.run(plan, tsa=True, tsas=("https://down.test/tsr", "http://tsa.two.test"), tsa_post=post)
+    assert report["outcome"] == "completed"
+    instant = report["instant"]
+    assert instant["state"] == "partial" and instant["seq"] == 2
+    assert [(item["tsa"], item["state"], item["token"]) for item in instant["tsas"]] == [
+        ("down.test", "failed", None), ("tsa.two.test", "stamped", instant["tsas"][1]["token"])]
+    assert "failed" in instant["tsas"][0]["reason"]
+    report = project.run(plan, tsa=True, tsas=("https://stale.test/tsr",), tsa_post=post)
+    assert report["instant"]["state"] == "failed"
+    assert report["instant"]["tsas"][0]["reason"] == "the timestamp reply does not answer this request"
+    assert not list(plan.directory.glob("ledger-head-3.*.tsr"))
+    report = project.run(plan, tsa=True, tsas=("bad url",), tsa_post=post)
+    assert report["outcome"] == "completed" and report["instant"]["state"] == "failed"
+    assert api().verify_ledger(project.repo, plan.plan_id)["entries"] == 4
+
+
+def test_moved_foreign_and_untrusted_tokens(tmp_path, tsa):
+    ledger = api()
+    _, post, _ = tsa
+    project, plan, _ = three_runs(tmp_path)
+    ledger.timestamp_head(project.repo, plan.plan_id, tsas=TSAS[:1], post=post)
+    token = plan.directory/"ledger-head-3.tsa.one.test.tsr"
+    token.rename(plan.directory/"ledger-head-2.tsa.one.test.tsr")
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.verify_ledger(project.repo, plan.plan_id)
+    assert error.value.kind == "timestamp_mismatch"
+    (plan.directory/"ledger-head-2.tsa.one.test.tsr").rename(plan.directory/"ledger-head-9.tsa.one.test.tsr")
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.verify_ledger(project.repo, plan.plan_id)
+    assert error.value.kind == "removed"
+    (plan.directory/"ledger-head-9.tsa.one.test.tsr").unlink()
+    # A real DigiCert token for other data is caught as a mismatch, not trusted.
+    (plan.directory/"ledger-head-1.timestamp.digicert.com.tsr").write_bytes(recorded("digicert"))
+    with pytest.raises(ledger.LedgerError) as error:
+        ledger.verify_ledger(project.repo, plan.plan_id)
+    assert error.value.kind == "timestamp_mismatch"
+    (plan.directory/"ledger-head-1.timestamp.digicert.com.tsr").unlink()
+    head = bytes.fromhex(ledger.ledger_head(project.repo, plan.plan_id))
+    (plan.directory/"ledger-head-3.stranger.test.tsr").write_bytes(Forge(label="Stranger").reply(head))
+    (plan.directory/"ledger-head-3.junk.test.tsr").write_bytes(b"junk")
+    checked = ledger.verify_ledger(project.repo, plan.plan_id)
+    assert [(item["tsa"], item["state"], item["reason"]) for item in checked["instant_timestamps"]] == [
+        ("junk.test", "rejected", "malformed"), ("stranger.test", "rejected", "untrusted")]

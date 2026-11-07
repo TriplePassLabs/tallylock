@@ -18,7 +18,8 @@ LIMITATIONS = [
     "Timestamp submission is not completed anchoring; presence is unverified without independently selected chain evidence.",
 ]
 COMMANDS = {'init', 'pre-register', 'seal', 'anchor', 'upgrade', 'verify', 'inspect',
-            'recover-seal', 'recover-lock', 'doctor', 'run', 'score', 'check'}
+            'recover-seal', 'recover-lock', 'doctor', 'run', 'score', 'check', 'refresh', 'export',
+            'board', 'compare', 'capabilities', 'agent-guide'}
 
 
 class _Parser(argparse.ArgumentParser):
@@ -90,8 +91,12 @@ def _parser():
     source.add_argument('receipt', nargs='?', type=_path)
     source.add_argument('--inclusion', type=_path)
     verify.add_argument('--offline', action='store_true', help='Accepted explicitly; verification is always offline')
-    verify.add_argument('--policy', choices=['anchored', 'integrity-only'],
-                        help='Default: anchored with --chain-cache, otherwise integrity-only')
+    verify.add_argument('--policy', choices=['anchored', 'integrity-only', 'provider-pow'],
+                        help='Default: provider-pow with --online or --evidence, anchored with --chain-cache, '
+                             'otherwise integrity-only')
+    verify.add_argument('--online', action='store_true', help='Check timestamps against two public providers')
+    verify.add_argument('--evidence', type=_path, help='Saved provider evidence to re-check offline')
+    verify.add_argument('--save-evidence', type=_path, help='Write the provider evidence used to this file')
     verify.add_argument('--chain-cache', type=_path)
     verify.add_argument('--min-confirmations', type=_positive, default=6)
     inspect = commands.add_parser('inspect', help='Bounded local presentation without verification')
@@ -121,18 +126,51 @@ def _parser():
     run.add_argument('--max-attempts', type=_positive, default=100)
     run.add_argument('--no-anchor', action='store_true')
     run.add_argument('--repeat', type=_positive, default=1)
+    run.add_argument('--setup', type=_path)
+    run.add_argument('--no-tsa', action='store_true')
+    run.add_argument('--tsa', action='append', default=[])
     run.add_argument('argv', nargs=argparse.REMAINDER)
     score = commands.add_parser('score', help='Show the real score and claim line for a plan')
     score.add_argument('--plan')
     check = commands.add_parser('check', help='Check a pasted claim line against this repository')
     check.add_argument('claim')
+    refresh = commands.add_parser('refresh', help='Recover, re-stamp and upgrade ledger timestamps')
+    refresh.add_argument('--plan')
+    export = commands.add_parser('export', help='Copy one plan into a bundle, or write an in-toto statement')
+    export.add_argument('plan')
+    export.add_argument('--out', required=True, type=_path)
+    export.add_argument('--format', choices=['bundle', 'intoto'], default='bundle')
+    registry = commands.add_parser('registry', help='Add plans to a registry folder and re-verify it')
+    registry_actions = registry.add_subparsers(dest='action', required=True)
+    registry_add = registry_actions.add_parser('add', parents=[common])
+    registry_add.add_argument('registry', type=_path)
+    registry_add.add_argument('source', type=_path)
+    registry_add.add_argument('plan')
+    registry_add.add_argument('--title', required=True)
+    registry_add.add_argument('--trust', required=True, choices=['anchored', 'signed', 'declared'])
+    registry_add.add_argument('--submitted-by', required=True)
+    registry_verify = registry_actions.add_parser('verify', parents=[common])
+    registry_verify.add_argument('registry', type=_path)
+    board = commands.add_parser('board', help='Build the static Receipts Board from a registry')
+    board.add_argument('registry', type=_path)
+    board.add_argument('--out', required=True, type=_path)
+    compare = commands.add_parser('compare', help='Compare two plans: same setup, and is the gap just noise?')
+    compare.add_argument('left')
+    compare.add_argument('right')
+    adapters = commands.add_parser('adapters', help="Read another tool's records")
+    adapter_import = adapters.add_subparsers(dest='action', required=True).add_parser('import', parents=[common])
+    adapter_import.add_argument('kind', choices=['inspect', 'proofbundle'])
+    adapter_import.add_argument('path', type=_path)
+    commands.add_parser('capabilities', help='Print every command as machine-readable JSON')
+    commands.add_parser('agent-guide', help='Print the guide for AI assistants')
     return parser
 
 
 def _recognized(argv):
     if argv and argv[0] in COMMANDS:
         return argv[0]
-    if len(argv) >= 2 and (argv[0], argv[1]) in {('proof', 'create'), ('evidence', 'export')}:
+    if len(argv) >= 2 and (argv[0], argv[1]) in {('proof', 'create'), ('evidence', 'export'), ('registry', 'add'),
+                                                  ('registry', 'verify'), ('adapters', 'import')}:
         return '.'.join(argv[:2])
     return None
 
@@ -318,21 +356,30 @@ def _dispatch(args, report, phase):
         return report
     if command == 'verify':
         from . import verify
-        policy = args.policy or ('anchored' if args.chain_cache else 'integrity-only')
+        if args.online and args.offline:
+            raise _Shown("Choose --online or --offline, not both", code=2)
+        policy = args.policy or ('provider-pow' if args.online or args.evidence else
+                                 'anchored' if args.chain_cache else 'integrity-only')
         cache = None
         if policy == 'anchored' and args.chain_cache:
             cache = _json_file(args.chain_cache)
         options = {'policy': policy, 'chain_cache': cache, 'minimum_confirmations': args.min_confirmations}
+        if policy == 'provider-pow':
+            options['provider_evidence'] = _json_file(args.evidence) if args.evidence else None
         phase[0] = 'local'
         if args.inclusion:
-            result = verify.inclusion(_json_file(args.inclusion), **options).report
+            checked = verify.inclusion(_json_file(args.inclusion), **options)
         else:
             # Verifier owns opening/validating its receipt so all invoked failures
             # retain the exact Verification.report rather than a CLI envelope.
-            result = verify.full(_path(args.receipt), **options).report
+            checked = verify.full(_path(args.receipt), **options)
+        result = checked.report
+        if args.save_evidence and checked.evidence is not None:
+            phase[0] = 'output'
+            _write(args.save_evidence, canonical.dumps(checked.evidence))
         if args.policy is None and result.get('format') == 'prove.verification.v1':
             result['effective_policy'] = policy
-            result['timestamp_checked'] = policy == 'anchored'
+            result['timestamp_checked'] = policy in ('anchored', 'provider-pow')
         return result
     if command == 'doctor':
         from . import doctor
@@ -348,8 +395,10 @@ def _dispatch(args, report, phase):
                 states = {target: value['state'] for target, value in inspection['proofs'].items()}
                 checks.append(doctor.timestamp_check(args.receipt, states, inspection['receipt_id'] is not None))
         return doctor.report(checks)
-    if command in ('run', 'score', 'check'):
+    if command in ('run', 'score', 'check', 'refresh', 'export', 'compare'):
         return _tally_command(command, args, phase)
+    if command in ('registry.add', 'registry.verify', 'board', 'adapters.import', 'capabilities', 'agent-guide'):
+        return _hub_command(command, args, phase)
     if command == 'evidence.export':
         from . import evidence
         report['output'] = str(_path(args.out))
@@ -459,10 +508,13 @@ def _tally(command, args, phase):
                 configs.append(config.resolve().relative_to(repo.resolve()))
             except ValueError:
                 raise TallyLockError(f"Config file must be inside the repository: {config}", code=2) from None
-        plan = ledger.start_plan(repo, argv, configs=tuple(configs), max_attempts=args.max_attempts)
+        plan = ledger.start_plan(repo, argv, configs=tuple(configs), max_attempts=args.max_attempts,
+                                 setup=args.setup)
         stdout = None if args.human_mode else sys.stderr.buffer
-        results = [ledger.run_attempt(plan, outputs=args.outputs, score_file=args.score_file,
-                                      stdout=stdout, anchor=not args.no_anchor) for _ in range(args.repeat)]
+        tsa = False if args.no_tsa else None
+        results = [ledger.run_attempt(plan, outputs=args.outputs, score_file=args.score_file, stdout=stdout,
+                                      anchor=not args.no_anchor, tsa=tsa, tsas=args.tsa or None)
+                   for _ in range(args.repeat)]
         report = {**results[-1], 'code': 0}
         if args.repeat > 1:
             report['repeat'] = [{key: item[key] for key in ('seq', 'outcome', 'exit_code', 'score')} for item in results]
@@ -483,8 +535,84 @@ def _tally(command, args, phase):
         half = tally._fields(summary, overview['count'])['half'] if summary['attempts'] else None
         return {'format': 'tallylock.score.v1', 'code': 0, 'plan': summary, 'half_display': half,
                 'plans_in_repo': overview['count'], 'claim': claim}
+    if command == 'refresh':
+        plans = [_plan_id(repo, args.plan)] if args.plan else ledger.list_plans(repo)
+        results = []
+        for plan_id in plans:
+            results.append({'plan_id': plan_id, 'recovered': ledger.recover(repo, plan_id),
+                            'instant': ledger.timestamp_head(repo, plan_id),
+                            'upgraded': ledger.upgrade_heads(repo, plan_id)})
+        return {'format': 'tallylock.refresh.v1', 'code': 0, 'plans': results}
+    if command == 'export':
+        plan_id = _plan_id(repo, args.plan)
+        if args.format == 'intoto':
+            from .adapters import intoto
+            from . import canonical
+            phase[0] = 'output'
+            _write(args.out, canonical.dumps(intoto.to_intoto(repo, plan_id)))
+        else:
+            from . import registry
+            registry.export(repo, plan_id, args.out)
+        return {'format': 'tallylock.export.v1', 'code': 0, 'plan_id': plan_id, 'kind': args.format,
+                'out': str(args.out), 'note': 'Bundles include the full stdout and stderr of every run. '
+                                              'Read them before you publish.' if args.format == 'bundle' else None}
+    if command == 'compare':
+        from . import compare
+        result = compare.compare((repo, _plan_id(repo, args.left)), (repo, _plan_id(repo, args.right)))
+        return {**result, 'code': 0}
     verdict = tally.check_claim(repo, args.claim)
     return {**verdict, 'code': 0 if verdict['verdict'] == 'match' else 3}
+
+
+def _plan_id(repo, prefix):
+    from . import ledger
+    matches = [plan for plan in ledger.list_plans(repo) if plan.startswith(prefix)]
+    if len(matches) != 1:
+        raise TallyLockError(f"No single plan matches {prefix!r}", code=3)
+    return matches[0]
+
+
+def _hub_command(command, args, phase):
+    try:
+        return _hub(command, args, phase)
+    except _Shown:
+        raise
+    except TallyLockError as error:
+        raise _Shown(error.message, code=error.code) from None
+
+
+def _hub(command, args, phase):
+    phase[0] = 'local'
+    if command == 'registry.add':
+        from . import registry
+        plan_id = _plan_id(args.source, args.plan)
+        entry = registry.add_entry(args.registry, args.source, plan_id,
+                                   {'source': 'tallylock', 'trust': args.trust, 'title': args.title,
+                                    'submitted_by': args.submitted_by})
+        return {**entry, 'code': 0}
+    if command == 'registry.verify':
+        from . import registry
+        result = registry.verify_registry(args.registry)
+        failed = [item for item in result.get('entries', []) if not item.get('ok')]
+        return {**result, 'code': 3 if failed else 0}
+    if command == 'board':
+        from . import board
+        return {**board.build(args.registry, args.out), 'code': 0}
+    if command == 'adapters.import':
+        from .adapters import import_inspect, verify_proofbundle
+        if args.kind == 'inspect':
+            records = import_inspect(args.path)
+            return {'format': 'tallylock.adapter-import.v1', 'code': 0, 'kind': 'inspect', 'trust': 'declared',
+                    'records': records}
+        result = verify_proofbundle(args.path)
+        return {'format': 'tallylock.adapter-import.v1', 'code': 0 if result['ok'] else 3, 'kind': 'proofbundle',
+                'trust': result.get('trust'), 'result': result}
+    if command == 'capabilities':
+        from . import capabilities
+        return {**capabilities.capabilities(), 'code': 0}
+    from importlib.resources import files
+    return {'format': 'tallylock.agent-guide.v1', 'code': 0,
+            'markdown': files('tallylock').joinpath('data/agent-guide.md').read_text(encoding='utf-8')}
 
 
 def _human_mode(argv):

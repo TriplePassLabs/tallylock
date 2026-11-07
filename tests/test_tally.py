@@ -223,3 +223,31 @@ def test_claim_disclosure_of_plan_count(tmp_path):
     verdict = tally.check_claim(project.repo, later)
     assert verdict["verdict"] == "mismatch"
     assert verdict["reasons"] == [{"field": "plans", "claimed": "2", "actual": "1"}]
+
+
+def test_bundle_mode_confirms_every_number_but_not_the_plan_count(tmp_path):
+    tally = api()
+    project = Project(tmp_path, [{"stdout": "tallylock: score=0.5\n"}, {"stdout": "tallylock: score=0.6\n"}])
+    first = project.plan()
+    project.run(first)
+    project.git.head = "b2" * 20
+    second = project.plan()
+    project.run(second)
+    line = tally.format_claim(tally.plan_summary(project.repo, second.plan_id), tally.repo_summary(project.repo))
+    assert "2 of 2 in repo" in line
+    from tallylock import registry
+    bundle = tmp_path / "bundle"
+    registry.export(project.repo, second.plan_id, bundle)
+    strict = tally.check_claim(bundle, line)
+    assert strict["verdict"] == "mismatch" and [r["field"] for r in strict["reasons"]] == ["plans"]
+    verdict = tally.check_claim(bundle, line, bundle=True)
+    assert verdict["verdict"] == "match" and verdict["reasons"] == []
+    assert verdict["notes"] == ["plan count not checkable from this bundle"]
+    assert "notes" not in tally.check_claim(project.repo, line)
+    tampered = line.replace(" best of 1 runs", " best of 2 runs")
+    assert tampered != line
+    bad = tally.check_claim(bundle, tampered, bundle=True)
+    assert bad["verdict"] == "mismatch" and [r["field"] for r in bad["reasons"]] == ["runs"]
+    wrong_number = line.replace("(2 of 2 in repo)", "(1 of 2 in repo)")
+    bad = tally.check_claim(bundle, wrong_number, bundle=True)
+    assert bad["verdict"] == "mismatch" and [r["field"] for r in bad["reasons"]] == ["plan_number"]

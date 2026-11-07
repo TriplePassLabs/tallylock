@@ -79,9 +79,14 @@ def _display(value: Fraction | None) -> str:
     return f"{scaled // 1000}.{scaled % 1000:03d}"
 
 
+def _scores(entries: list[dict]) -> list[Fraction]:
+    return [Fraction(e["score"]["numerator"], e["score"]["denominator"])
+            for e in entries if e["outcome"] == "completed" and e["score"] is not None]
+
+
 def _summary(plan_id: str, plan_number: int, entries: list[dict]) -> dict:
     completed = [entry for entry in entries if entry["outcome"] == "completed"]
-    scores = [Fraction(e["score"]["numerator"], e["score"]["denominator"]) for e in completed if e["score"] is not None]
+    scores = _scores(entries)
     stats = statistics(scores)
     interval = None
     if stats["half_width"] is not None:
@@ -100,10 +105,15 @@ def _summary(plan_id: str, plan_number: int, entries: list[dict]) -> dict:
             "interval": interval}
 
 
+def plan_detail(repo: Path, plan_id: str) -> tuple[dict, list[Fraction]]:
+    """One verified plan's summary and its completed scores, from a single ledger check."""
+    checked = ledger.verify_ledger(repo, plan_id)
+    return _summary(plan_id, checked["plan_number"], checked["ledger"]), _scores(checked["ledger"])
+
+
 def plan_summary(repo: Path, plan_id: str) -> dict:
     """Summarize one verified plan ledger; failed attempts are counted, never averaged."""
-    checked = ledger.verify_ledger(repo, plan_id)
-    return _summary(plan_id, checked["plan_number"], checked["ledger"])
+    return plan_detail(repo, plan_id)[0]
 
 
 def repo_summary(repo: Path) -> dict:
@@ -162,8 +172,10 @@ def _verdict(verdict, reasons, plan_id=None, seq=None):
             "plan_id": plan_id, "seq": seq}
 
 
-def check_claim(repo: Path, line: str) -> dict:
-    """Find the claimed plan and ledger head, verify the ledger and recompute every number."""
+def check_claim(repo: Path, line: str, *, bundle: bool = False) -> dict:
+    """Find the claimed plan and ledger head, verify the ledger and recompute every number.
+
+    A bundle holds one plan, so with bundle=True the claimed plan count is noted, not checked."""
     claim = parse_claim(line)
     plans = ledger.list_plans(repo)
     matches = [plan_id for plan_id in plans if plan_id.startswith(claim["plan"])]
@@ -184,6 +196,10 @@ def check_claim(repo: Path, line: str) -> dict:
     actual = _fields(_summary(plan_id, checked["plan_number"], checked["ledger"][:seq]), len(plans))
     reasons = [{"field": name, "claimed": _text(claim[name]), "actual": _text(actual[name])}
                for name in _COMPARED if claim[name] != actual[name]]
+    if bundle:
+        verdict = _verdict("mismatch" if reasons else "match", reasons, plan_id, seq)
+        verdict["notes"] = ["plan count not checkable from this bundle"]
+        return verdict
     # Plans created after the claim are fine; a plan that existed then must still exist.
     numbers = [ledger.load_plan(repo, item)["metadata"]["tallylock_plan"]["plan_number"] for item in plans]
     earlier = sum(1 for number in numbers if number <= claim["plans"])
