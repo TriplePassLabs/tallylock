@@ -4,8 +4,8 @@ import hashlib
 
 import pytest
 
-from prove import canonical, merkle, records, schema
-from prove.errors import ProveError
+from tallylock import canonical, merkle, records, schema
+from tallylock.errors import TallyLockError
 
 
 def receipt(first, second, *, outcome="completed", ceiling=5, max_calls=None):
@@ -50,7 +50,7 @@ def test_unknown_usage_cannot_erase_a_known_budget_violation():
     # Closed schemas and every byte commitment are valid; only the semantic
     # lower bound contradicts the declared successful outcome.
     schema.validate_result(result, manifest)
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         records.check(manifest, result, data)
     assert caught.value.code == 2
 
@@ -72,7 +72,7 @@ def test_unknown_constrained_total_never_claims_recorded_within(known):
 def test_known_call_limit_still_applies_with_unknown_token_totals():
     manifest, result, data = receipt(None, None, max_calls=1)
     schema.validate_result(result, manifest)
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         records.check(manifest, result, data)
     assert caught.value.code == 2
 
@@ -86,7 +86,7 @@ def test_exact_event_and_total_wire_limits_are_accepted():
     data = records.encode(events)
     assert len(data) == records.MAX_RECORD_BYTES
     assert records.decode(data) == events
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.decode(data + b"\n")
 
 
@@ -100,6 +100,6 @@ def test_one_shot_event_error_precedence_has_distinguishable_codes(
     event = records.decode(data)[0]
     manifest["profile"] = manifest_profile
     event[event_field] = event_value
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         schema.validate_event(event, manifest, "run-1")
     assert caught.value.code == code

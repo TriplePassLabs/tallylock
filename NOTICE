@@ -1,7 +1,7 @@
-Prove
+TallyLock
 Copyright 2026 Christopher Ayers
 Developed by TriplePass Labs.
 
-Prove is licensed under Apache-2.0. Runtime dependencies are separate
+TallyLock is licensed under Apache-2.0. Runtime dependencies are separate
 projects and retain their own licenses. Their observed versions, metadata,
 license files, and project links are listed in docs/DEPENDENCIES.md.

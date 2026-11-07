@@ -1,8 +1,8 @@
 # Runtime dependency inventory
 
-This inventory records the packages installed with Prove's runtime dependencies in a Python 3.12 environment on 2026-11-06. Exact transitive versions can change on a fresh install because Prove pins its four direct dependencies but their dependencies may use version ranges. Optional development and `jsonschema` format-extra packages are outside this runtime inventory.
+This inventory records the packages installed with TallyLock's runtime dependencies in a Python 3.12 environment on 2026-11-06. Exact transitive versions can change on a fresh install because TallyLock pins its four direct dependencies but their dependencies may use version ranges. Optional development and `jsonschema` format-extra packages are outside this runtime inventory.
 
-“Metadata license” is the installed distribution's `License-Expression` or `License` field. “Bundled file” records a license file observed in that distribution. A bundled file does not fill in a missing metadata field. Each dependency retains its own license; Prove's Apache-2.0 license applies to Prove.
+“Metadata license” is the installed distribution's `License-Expression` or `License` field. “Bundled file” records a license file observed in that distribution. A bundled file does not fill in a missing metadata field. Each dependency retains its own license; TallyLock's Apache-2.0 license applies to TallyLock.
 
 | Distribution observed | Scope and requirement | Metadata license | Bundled license file and text observed | Project URL in metadata |
 | --- | --- | --- | --- | --- |

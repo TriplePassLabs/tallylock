@@ -1,0 +1,2 @@
+This is an example of arbitrary evaluation output preserved as exact bytes.
+TallyLock does not require the program that produced this file to use a particular model, harness, provider or research project.

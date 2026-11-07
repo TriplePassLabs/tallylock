@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from prove import _http
-from prove.errors import ProveError
+from tallylock import _http
+from tallylock.errors import TallyLockError
 from test_http import server
 
 
@@ -23,7 +23,7 @@ def test_http_child_uses_trusted_package_not_evaluation_directory(tmp_path, monk
     if shadow_source == "startup":
         (shadow / "sitecustomize.py").write_text(marker_code)
     else:
-        package = shadow / "prove"
+        package = shadow / "tallylock"
         package.mkdir()
         (package / "__init__.py").write_text(marker_code)
         (package / "_http.py").write_text("raise SystemExit(1)\n")
@@ -35,7 +35,7 @@ def test_http_child_uses_trusted_package_not_evaluation_directory(tmp_path, monk
     response = None
     try:
         response = _http.request("GET", origin + "/ok", body=None, headers={}, response_limit=100)
-    except ProveError as error:
+    except TallyLockError as error:
         failure = error
     assert not marker.exists(), "HTTP subprocess imported an unrelated evaluation's prove package"
     assert failure is None

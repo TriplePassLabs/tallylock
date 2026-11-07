@@ -8,7 +8,7 @@ from pathlib import Path
 import stat
 
 from . import anchors, canonical, chain, merkle, records, schema, scoring
-from .errors import ProveError
+from .errors import TallyLockError
 from .filesystem import Directory, _Descriptors, _directory_names, _problem, _same
 from .paths import validate_paths
 
@@ -37,7 +37,7 @@ def _anchor(state='not_checked') -> dict:
             'required_heights': [], 'ignored_invalid_attestations': 0, 'unsupported_attestations': 0}
 
 
-def _state(error: ProveError) -> str:
+def _state(error: TallyLockError) -> str:
     return {2: 'invalid', 4: 'unsupported', 3: 'unavailable', 5: 'unavailable'}[error.code]
 
 
@@ -62,7 +62,7 @@ class _Report:
             self.value['limitations'].append(
                 'Inclusion does not check artifacts, full record history, resources, coverage or scoring.')
 
-    def error(self, stage: str, error: ProveError) -> None:
+    def error(self, stage: str, error: TallyLockError) -> None:
         # Schema, version and JSON diagnostics put hostile values after a colon.
         # Preserve the descriptive prefix while bounding and removing controls.
         code = error.code
@@ -79,11 +79,11 @@ class _Report:
         if isinstance(policy, str) and policy in ('anchored', 'integrity-only'):
             self.value['policy'] = policy
         else:
-            self.error('options', ProveError('unsupported verification policy'))
+            self.error('options', TallyLockError('unsupported verification policy'))
         if type(minimum) is int and 1 <= minimum <= canonical.MAX_SAFE_INTEGER:
             self.value['minimum_confirmations'] = minimum
         else:
-            self.error('options', ProveError('invalid minimum confirmations'))
+            self.error('options', TallyLockError('invalid minimum confirmations'))
         return not self.value['errors']
 
     def finish(self) -> Verification:
@@ -101,7 +101,7 @@ class _Report:
 
 def _require(condition: bool, message: str, *, code: int = 2) -> None:
     if not condition:
-        raise ProveError(message, code=code)
+        raise TallyLockError(message, code=code)
 
 
 def _receipt_path(value) -> Path:
@@ -109,7 +109,7 @@ def _receipt_path(value) -> Path:
     try:
         path = Path(value)
     except (TypeError, ValueError) as error:
-        raise ProveError('receipt must be a filesystem path') from error
+        raise TallyLockError('receipt must be a filesystem path') from error
     _require('\x00' not in str(path), 'receipt path must not contain NUL')
     return path
 
@@ -174,11 +174,11 @@ def _chain(report: _Report, cache) -> chain.ChainView | None:
         return None
     if cache is None:
         report.value['chain_view'] = {'state': 'unavailable'}
-        report.error('chain', ProveError('explicit chain cache is absent', code=3))
+        report.error('chain', TallyLockError('explicit chain cache is absent', code=3))
         return None
     try:
         view = chain.prepare(cache)
-    except ProveError as error:
+    except TallyLockError as error:
         report.value['chain_view'] = {'state': _state(error)}
         report.error('chain', error)
         return None
@@ -199,13 +199,13 @@ def _verify_anchor(report: _Report, kind: str, data: bytes | None, view: chain.C
         return
     try:
         evidence = anchors.verify(data, digest, view, minimum_confirmations=report.value['minimum_confirmations'])
-    except ProveError as error:
+    except TallyLockError as error:
         report.value[field] = _anchor(_state(error))
         report.error(field, error)
     else:
         report.value[field] = evidence
         if evidence['state'] != 'anchored':
-            report.error(field, ProveError('insufficient anchored evidence', code=3))
+            report.error(field, TallyLockError('insufficient anchored evidence', code=3))
 
 
 def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView | None) -> None:
@@ -213,7 +213,7 @@ def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView |
         return
     try:
         exists = _optional_directory(directory, 'proofs')
-    except ProveError as error:
+    except TallyLockError as error:
         for kind in ('manifest', 'result'):
             field = f'{kind}_anchor'
             if report.value['registration_id' if kind == 'manifest' else 'receipt_id'] is not None:
@@ -225,7 +225,7 @@ def _full_anchors(report: _Report, directory: Directory, view: chain.ChainView |
             continue
         try:
             data = _optional_read(directory, f'proofs/{kind}.ots', limit=anchors.MAX_PROOF_BYTES) if exists else None
-        except ProveError as error:
+        except TallyLockError as error:
             report.value[f'{kind}_anchor'] = _anchor(_state(error))
             report.error(f'{kind}_anchor', error)
         else:
@@ -251,7 +251,7 @@ def _artifact_check(report: _Report, directory: Directory, result: dict) -> None
         dirs = [path[len('artifacts/'):] for path, is_file in entries.items() if not is_file]
         validate_paths(files, directories=dirs)
         _require(set(files) == set(result['inventory']), 'artifact inventory differs from disk')
-    except ProveError as error:
+    except TallyLockError as error:
         failed(error)
     # A read error for one committed file must not hide invalidity of another.
     for path, entry in result['inventory'].items():
@@ -262,16 +262,16 @@ def _artifact_check(report: _Report, directory: Directory, result: dict) -> None
             _require(digest == entry['sha256'], 'artifact SHA256 differs from inventory')
             total += size
             _require(total <= canonical.MAX_SAFE_INTEGER, 'aggregate artifact bytes exceed safe integer range')
-        except ProveError as error:
+        except TallyLockError as error:
             failed(error)
     try:
         current = directory._list_entries('artifacts', missing_ok=True)
         if entries is not None:
             _require(current == entries, 'artifact namespace changed while checking', code=5)
-    except ProveError as error:
+    except TallyLockError as error:
         failed(error)
     if failure:
-        report.value['artifact_integrity']['state'] = _state(ProveError('artifact check failed', code=failure))
+        report.value['artifact_integrity']['state'] = _state(TallyLockError('artifact check failed', code=failure))
     else:
         report.value['artifact_integrity'] = {'state': 'checked', 'files': len(files), 'bytes': total}
 
@@ -281,7 +281,7 @@ def _records_check(report: _Report, directory: Directory, manifest: dict, result
         data = _optional_read(directory, 'records.jsonl', limit=records.MAX_RECORD_BYTES)
         _require(data is not None, 'committed records are missing')
         checked = records.check(manifest, result, data)
-    except ProveError as error:
+    except TallyLockError as error:
         report.value['record_integrity']['state'] = _state(error)
         report.error('records', error)
     else:
@@ -298,7 +298,7 @@ def _score_check(report: _Report, directory: Directory, manifest: dict, result: 
             _require(data is not None, 'committed score input is missing')
             return data
         checked = scoring.check(manifest, result, read)
-    except ProveError as error:
+    except TallyLockError as error:
         report.value['score']['state'] = _state(error)
         report.error('score', error)
     else:
@@ -327,7 +327,7 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
         return report.finish()
     try:
         receipt = _receipt_path(receipt)
-    except ProveError as error:
+    except TallyLockError as error:
         report.error('options', error)
         return report.finish()
     view = _chain(report, chain_cache)
@@ -336,7 +336,7 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
             before = None
             try:
                 before = _root(directory)
-            except ProveError as error:
+            except TallyLockError as error:
                 report.error('receipt', error)
             cores = {}
             manifest = result = None
@@ -346,7 +346,7 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
                 cores['manifest.json'] = data
                 manifest = _core(data, 'manifest')
                 report.manifest(manifest)
-            except ProveError as error:
+            except TallyLockError as error:
                 report.error('manifest', error)
             if manifest is not None:
                 try:
@@ -355,7 +355,7 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
                     cores['result.json'] = data
                     result = _core(data, 'result', manifest)
                     report.result(result)
-                except ProveError as error:
+                except TallyLockError as error:
                     report.error('result', error)
             if result is not None:
                 _artifact_check(report, directory, result)
@@ -364,9 +364,9 @@ def full(receipt: Path, *, policy='anchored', chain_cache: dict | None = None,
             _full_anchors(report, directory, view)
             try:
                 _stability(directory, before, cores)
-            except ProveError as error:
+            except TallyLockError as error:
                 report.error('stability', error)
-    except ProveError as error:
+    except TallyLockError as error:
         report.error('receipt', error)
     return report.finish()
 
@@ -408,7 +408,7 @@ def inclusion(value: dict | bytes, *, policy='anchored', chain_cache: dict | Non
             _require(isinstance(value, dict), 'inclusion must be a dict or bytes')
             snapshot = canonical.loads(canonical.dumps(value))
         schema.validate_inclusion(snapshot)
-    except ProveError as error:
+    except TallyLockError as error:
         report.value['record_integrity']['state'] = _state(error)
         report.error('inclusion', error)
         return report.finish()
@@ -421,7 +421,7 @@ def inclusion(value: dict | bytes, *, policy='anchored', chain_cache: dict | Non
         _require(merkle.verify(canonical.dumps(snapshot['event']), snapshot['index'], snapshot['size'],
                                snapshot['siblings'], snapshot['result']['records']['root']),
                  'invalid Merkle membership')
-    except ProveError as error:
+    except TallyLockError as error:
         report.value['record_integrity']['state'] = _state(error)
         report.error('inclusion', error)
     else:

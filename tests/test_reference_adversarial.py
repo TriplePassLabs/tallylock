@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from prove import canonical, merkle, verify
+from tallylock import canonical, merkle, verify
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / "src/prove/data/conformance/cases"
+CORPUS = ROOT / "src/tallylock/data/conformance/cases"
 
 
 def reference():

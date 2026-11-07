@@ -15,7 +15,7 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 _MAX_REQUEST_IPC = 2 * 1024 * 1024
@@ -29,7 +29,7 @@ class Response:
     retry_after: str | None
 
 
-class NetworkError(ProveError):
+class NetworkError(TallyLockError):
     def __init__(self):
         super().__init__("HTTP network request failed or exceeded its deadline", code=5)
 
@@ -113,21 +113,21 @@ def request(method, url, *, body, headers, response_limit, timeout_seconds=10,
     except (ValueError, TypeError):
         valid = False
     if not valid or method not in {"GET", "POST"}:
-        raise ProveError("invalid HTTP request", code=5)
+        raise TallyLockError("invalid HTTP request", code=5)
     if (body is not None and (not isinstance(body, bytes) or len(body) > _MAX_REQUEST_BODY)
             or not isinstance(headers, dict) or len(headers) > 128
             or any(not isinstance(k, str) or not isinstance(v, str) for k, v in headers.items())):
-        raise ProveError("invalid HTTP request payload", code=5)
+        raise TallyLockError("invalid HTTP request payload", code=5)
     if len(url) > 16384 or sum(len(k)+len(v) for k, v in headers.items()) > 65536:
-        raise ProveError("HTTP request metadata exceeds size limit", code=5)
+        raise TallyLockError("HTTP request metadata exceeds size limit", code=5)
     if (type(response_limit) is not int or not 0 <= response_limit <= 32 * 1024 * 1024
             or isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float))
             or not math.isfinite(timeout_seconds) or timeout_seconds <= 0):
-        raise ProveError("invalid HTTP request bounds", code=5)
+        raise TallyLockError("invalid HTTP request bounds", code=5)
     end = time.monotonic() + timeout_seconds
     if deadline is not None:
         if isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline):
-            raise ProveError("invalid absolute HTTP deadline", code=5)
+            raise TallyLockError("invalid absolute HTTP deadline", code=5)
         end = min(end, deadline)
     if end <= time.monotonic():
         raise NetworkError()
@@ -136,7 +136,7 @@ def request(method, url, *, body, headers, response_limit, timeout_seconds=10,
         "headers": headers, "response_limit": response_limit,
         "timeout": end-time.monotonic()}, separators=(",", ":")).encode()
     if len(payload) > _MAX_REQUEST_IPC:
-        raise ProveError("HTTP request IPC exceeds size limit", code=5)
+        raise TallyLockError("HTTP request IPC exceeds size limit", code=5)
     chunks = bytearray()
     child = None
     primary = None
@@ -148,7 +148,7 @@ def request(method, url, *, body, headers, response_limit, timeout_seconds=10,
             getattr(child, name).close()
 
     try:
-        child = subprocess.Popen([sys.executable, "-I", "-m", "prove._http"], stdin=subprocess.PIPE,
+        child = subprocess.Popen([sys.executable, "-I", "-m", "tallylock._http"], stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, close_fds=True)
         os.set_blocking(child.stdin.fileno(), False)
         os.set_blocking(child.stdout.fileno(), False)
@@ -172,20 +172,20 @@ def request(method, url, *, body, headers, response_limit, timeout_seconds=10,
                 break
             chunks.extend(chunk)
             if len(chunks) > response_limit + 2048:
-                raise ProveError("HTTP response exceeds size limit", code=5)
+                raise TallyLockError("HTTP response exceeds size limit", code=5)
         header, separator, data = bytes(chunks).partition(b"\n")
         if not separator:
-            raise ProveError("HTTP request failed", code=5)
+            raise TallyLockError("HTTP request failed", code=5)
         metadata = json.loads(header)
         if metadata.get("error") == "network":
             raise NetworkError()
         if "error" in metadata:
-            raise ProveError("HTTP response failed validation", code=5)
+            raise TallyLockError("HTTP response failed validation", code=5)
         if metadata["status"] == 401:
-            raise ProveError("HTTP authentication failed", code=5)
+            raise TallyLockError("HTTP authentication failed", code=5)
         return Response(metadata["status"], data, metadata["retry_after"])
     except (OSError, ValueError, KeyError):
-        primary = ProveError("HTTP request failed", code=5)
+        primary = TallyLockError("HTTP request failed", code=5)
         raise primary from None
     except BaseException as error:
         primary = error
@@ -216,7 +216,7 @@ def request(method, url, *, body, headers, response_limit, timeout_seconds=10,
                 cleanup(child.kill)
                 cleanup(child.wait)
             if cleanup_failed and primary is None:
-                raise ProveError("HTTP request cleanup failed", code=5) from None
+                raise TallyLockError("HTTP request cleanup failed", code=5) from None
 
 
 if __name__ == "__main__":

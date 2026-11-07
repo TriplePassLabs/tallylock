@@ -5,8 +5,8 @@ import sys
 
 import pytest
 
-from prove import canonical, filesystem, schema, store, verify
-from prove.errors import ProveError
+from tallylock import canonical, filesystem, schema, store, verify
+from tallylock.errors import TallyLockError
 
 
 @pytest.mark.parametrize("phase", ["registration", "final-core", "final-artifact"])
@@ -28,7 +28,7 @@ def test_explicit_lock_recovery_removes_only_crashed_owned_publication(tmp_path,
 import os
 import sys
 from pathlib import Path
-from prove import canonical, filesystem, store
+from tallylock import canonical, filesystem, store
 
 receipt, source, manifest_path = map(Path, sys.argv[1:4])
 phase = sys.argv[4]
@@ -82,7 +82,7 @@ def test_recovery_rejects_malformed_private_ownership_state(tmp_path, pending):
     store.register(manifest, receipt)
     with filesystem.Directory(receipt) as directory:
         directory.atomic_write(".prove/pending-write.json", pending, replace=True)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         store.recover_seal(receipt)
 
 
@@ -94,7 +94,7 @@ def test_recovery_rejects_symlinked_private_ownership_state(tmp_path):
     target = tmp_path / "outside.json"
     target.write_bytes(canonical.dumps({}))
     (receipt / ".prove/pending-write.json").symlink_to(target)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         store.recover_seal(receipt)
 
 

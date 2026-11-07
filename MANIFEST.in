@@ -1,7 +1,7 @@
 include LICENSE NOTICE README.md RUNBOOK.md PLAN.md pyproject.toml
 
 # Public source inputs needed to rebuild, test, and audit an sdist.
-graft src/prove
+graft src/tallylock
 graft tests
 graft docs
 graft .github

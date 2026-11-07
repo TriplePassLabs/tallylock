@@ -1,11 +1,11 @@
 # Public wire conformance
 
-The single canonical corpus lives in [package data](../src/prove/data/conformance/README.md).
-The [case index](../src/prove/data/conformance/index.json) records each input's
+The single canonical corpus lives in [package data](../src/tallylock/data/conformance/README.md).
+The [case index](../src/tallylock/data/conformance/index.json) records each input's
 purpose, expected code, registration ID, receipt ID, root, score and scope.
 The intentionally malformed JSON cases are raw byte files, not valid JSON documents.
 
-Run `python tools/reference_verify.py src/prove/data/conformance/cases/run-fixture-exact.json`
+Run `python tools/reference_verify.py src/tallylock/data/conformance/cases/run-fixture-exact.json`
 from the repository with `jsonschema` installed. This prints a reference report,
 not a production verification report. `--help` describes the one-file interface.
 

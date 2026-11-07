@@ -8,9 +8,9 @@ import stat
 
 import pytest
 
-from prove.errors import ProveError
-from prove.filesystem import Directory, WriterLock
-import prove.filesystem as filesystem
+from tallylock.errors import TallyLockError
+from tallylock.filesystem import Directory, WriterLock
+import tallylock.filesystem as filesystem
 
 
 @pytest.mark.parametrize("operation", ["read", "digest", "copy"])
@@ -33,7 +33,7 @@ def test_read_detects_replaced_ancestor_from_receipt_root(tmp_path, monkeypatch,
 
     with Directory(tmp_path) as directory:
         monkeypatch.setattr(filesystem.os, "read", swap_parent)
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             if operation == "copy":
                 destination_path = tmp_path / "destination"
                 destination_path.mkdir()
@@ -67,7 +67,7 @@ def test_publication_rejects_replaced_destination_ancestor(tmp_path, monkeypatch
 
     monkeypatch.setattr(Directory, "_temporary", swap_destination)
     with Directory(root) as directory, Directory(source_root) as source:
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             if operation == "write":
                 directory.atomic_write("folder/output.txt", b"payload")
             else:
@@ -83,7 +83,7 @@ def test_enumeration_rejects_casefold_namespace_collisions(tmp_path, paths):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"output")
     with Directory(tmp_path) as directory:
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             directory.list_files()
 
 
@@ -97,7 +97,7 @@ def test_enumeration_io_failure_is_a_structured_operational_error(tmp_path, monk
 
     with Directory(tmp_path) as directory:
         monkeypatch.setattr(filesystem.os, "listdir", broken_listdir)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             directory.list_files()
     assert caught.value.code == 5
 
@@ -114,7 +114,7 @@ def test_new_parent_fsync_failure_prevents_successful_publication(tmp_path, monk
 
     with Directory(tmp_path) as directory:
         monkeypatch.setattr(filesystem.os, "fsync", fail_parent_sync)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             directory.atomic_write("new/child/output.txt", b"result")
     assert caught.value.code == 5
     assert not (tmp_path / "new/child/output.txt").exists()
@@ -132,7 +132,7 @@ def test_writer_acquisition_does_not_wait_on_competing_flock(tmp_path, monkeypat
 
     with Directory(tmp_path) as directory:
         monkeypatch.setattr(filesystem.fcntl, "flock", contended_flock)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             with WriterLock(directory):
                 pytest.fail("contended writer entered the critical section")
     assert caught.value.code == 5
@@ -153,7 +153,7 @@ def test_cleanup_error_preserves_primary_failure_and_closes_descriptors(tmp_path
     monkeypatch.setattr(filesystem, "_write_all", failed_write)
     monkeypatch.setattr(filesystem.os, "unlink", failed_cleanup)
     with Directory(tmp_path) as directory:
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             directory.atomic_write("output.txt", b"payload")
     assert caught.value.code == 5
     assert "primary write failure" in str(caught.value)
@@ -173,7 +173,7 @@ def test_file_and_publication_sync_failures_are_structured(tmp_path, monkeypatch
 
     monkeypatch.setattr(filesystem.os, "fsync", failed_sync)
     with Directory(tmp_path) as directory:
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             directory.atomic_write("output.txt", b"complete data")
     assert caught.value.code == 5
     if (tmp_path / "output.txt").exists():
@@ -196,10 +196,10 @@ def test_live_process_writer_cannot_be_recovered_or_displaced(tmp_path):
         assert acquired.wait(5), "child failed to acquire writer lock"
         with Directory(tmp_path) as directory:
             observed = hashlib.sha256(directory.read(".prove/lock")).hexdigest()
-            with pytest.raises(ProveError) as caught:
+            with pytest.raises(TallyLockError) as caught:
                 filesystem.recover_lock(directory, observed)
             assert caught.value.code == 5
-            with pytest.raises(ProveError):
+            with pytest.raises(TallyLockError):
                 with WriterLock(directory):
                     pytest.fail("second process displaced the writer")
     finally:
@@ -225,7 +225,7 @@ def test_recovery_winning_empty_file_window_prevents_displaced_writer_entry(tmp_
             return original_flock(fd, operation)
 
         monkeypatch.setattr(filesystem.fcntl, "flock", recover_before_acquire)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             with WriterLock(directory):
                 pytest.fail("writer entered after its lock was recovered")
     assert won_recovery

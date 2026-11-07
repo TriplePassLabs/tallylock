@@ -55,9 +55,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dist_dir="$(mktemp -d "$RUNNER_TEMP/prove-dist.XXXXXX")"
-          wheel_env="$(mktemp -d "$RUNNER_TEMP/prove-wheel.XXXXXX")"
-          source_env="$(mktemp -d "$RUNNER_TEMP/prove-source.XXXXXX")"
+          dist_dir="$(mktemp -d "$RUNNER_TEMP/tallylock-dist.XXXXXX")"
+          wheel_env="$(mktemp -d "$RUNNER_TEMP/tallylock-wheel.XXXXXX")"
+          source_env="$(mktemp -d "$RUNNER_TEMP/tallylock-source.XXXXXX")"
           expected_version="$(python -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])')"
 
           pip_install() {

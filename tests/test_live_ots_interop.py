@@ -10,8 +10,8 @@ from opentimestamps.core.serialize import BytesDeserializationContext, BytesSeri
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 import pytest
 
-from prove import anchors
-from prove.errors import ProveError
+from tallylock import anchors
+from tallylock.errors import TallyLockError
 
 LIVE_CASES = json.loads((Path(__file__).parent / "fixtures/ots/calendar-depth69.json").read_text())["cases"]
 
@@ -72,8 +72,8 @@ def test_raw_and_detached_depth_policy_preflights_before_hashing(monkeypatch):
 
     monkeypatch.setattr(OpSHA256, "__call__", forbidden)
     too_deep = raw_chain(256)
-    with pytest.raises(ProveError, match="depth limit"):
+    with pytest.raises(TallyLockError, match="depth limit"):
         anchors.parse_timestamp(too_deep, commitment)
     prefix = DetachedTimestampFile.HEADER_MAGIC + b"\x01\x08" + commitment
-    with pytest.raises(ProveError, match="depth limit"):
+    with pytest.raises(TallyLockError, match="depth limit"):
         anchors.inspect(prefix + too_deep, commitment.hex())

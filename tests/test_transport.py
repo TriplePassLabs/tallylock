@@ -7,15 +7,15 @@ from opentimestamps.core.notary import PendingAttestation, UnknownAttestation, L
 from opentimestamps.core.serialize import BytesSerializationContext
 from opentimestamps.core.timestamp import Timestamp
 
-from prove.errors import ProveError
+from tallylock.errors import TallyLockError
 
 ORIGIN = "https://a.pool.opentimestamps.org"
 COMMITMENT = b"a" * 32
 
 
 def api():
-    assert importlib.util.find_spec("prove.transport") is not None, "calendar transport missing"
-    from prove import transport
+    assert importlib.util.find_spec("tallylock.transport") is not None, "calendar transport missing"
+    from tallylock import transport
     return transport
 
 
@@ -41,7 +41,7 @@ def attested_reply(commitment, *attestations):
 def test_submission_rejects_untrusted_origins_without_io(origin, monkeypatch):
     client = api()
     monkeypatch.setattr(client._http, "request", lambda *a, **k: pytest.fail("unexpected request"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(origin, COMMITMENT)
     assert error.value.code == 2
 
@@ -69,7 +69,7 @@ def test_retry_after_defers_and_bad_response_is_operational(monkeypatch):
         client.submit(ORIGIN, COMMITMENT)
     assert error.value.next_retry_at >= int(time.time())+599
     monkeypatch.setattr(client._http, "request", lambda *a, **k: client._http.Response(200, b"bad", None))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(ORIGIN, COMMITMENT)
     assert error.value.code == 5
 
@@ -82,7 +82,7 @@ def test_redirects_auth_and_other_client_errors_never_retry(monkeypatch, status)
         calls.append(args)
         return client._http.Response(status, b"credential-like body", None)
     monkeypatch.setattr(client._http, "request", request)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(ORIGIN, COMMITMENT)
     assert error.value.code == 5 and len(calls) == 1
     assert "credential-like" not in str(error.value)
@@ -99,7 +99,7 @@ def test_transient_failures_get_exactly_three_attempts_and_one_two_backoff(monke
         return client._http.Response(failure, b"private", None)
     monkeypatch.setattr(client._http, "request", request)
     monkeypatch.setattr(client.time, "sleep", sleeps.append)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(ORIGIN, COMMITMENT)
     assert error.value.code == 5 and len(calls) == 3 and sleeps == [1, 2]
 
@@ -109,7 +109,7 @@ def test_retry_budget_exhaustion_never_sleeps_past_shared_deadline(monkeypatch):
     calls = []
     monkeypatch.setattr(client._http, "request", lambda *a, **k: client._http.Response(503, b"", None))
     monkeypatch.setattr(client.time, "sleep", lambda _: pytest.fail("budget exceeded"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(ORIGIN, COMMITMENT, deadline=time.monotonic()+.2)
     assert error.value.code == 5
 
@@ -133,7 +133,7 @@ def test_retry_after_http_date_and_origin_normalization(monkeypatch):
 def test_upgrade_authority_attacks(origin, monkeypatch):
     client = api()
     monkeypatch.setattr(client._http, "request", lambda *a, **k: pytest.fail("unexpected request"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(origin, COMMITMENT)
     assert error.value.code == 2
 
@@ -143,6 +143,6 @@ def test_unsupported_only_calendar_reply_is_operational(monkeypatch, attestation
     client = api()
     data = attested_reply(COMMITMENT, attestation)
     monkeypatch.setattr(client._http, "request", lambda *a, **k: client._http.Response(200, data, None))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(ORIGIN, COMMITMENT)
     assert error.value.code == 5

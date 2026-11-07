@@ -1,4 +1,6 @@
-# Prove receipt protocol v1
+# TallyLock receipt protocol v1
+
+Naming note (2026-11-07): the product is now TallyLock. Protocol v1 format identifiers keep the historical `prove.` namespace and receipts keep the `.prove/` directory. These are wire names, not product names, and changing them would change receipt bytes and IDs.
 
 Draft frozen for implementation review, 2026-11-06. Normative core version identifiers below are independent of package release numbers. The standalone CLI supports any producer of files and optional structured traces. No lab project or hosted TriplePass Labs service is part of this contract.
 
@@ -42,7 +44,7 @@ Each selected attempt is sealed in its own receipt directory. Reuse the same fro
 
 `weight_digest_recorded` requires a non-null model.sha256. All model evidence types remain operator-declared descriptions: a recorded digest does not prove execution with those weights, and a provider-metadata label does not authenticate a provider response.
 
-`prove init` creates a domain-neutral manifest with one `run-1` attempt, artifacts-v1, recorded-only scoring, explicit unknown model/dataset digests and unknown budgets. The user edits/pins relevant evidence before `pre-register`. Defaults do not imply strong scientific preregistration; the report keeps unknowns visible.
+`tallylock init` creates a domain-neutral manifest with one `run-1` attempt, artifacts-v1, recorded-only scoring, explicit unknown model/dataset digests and unknown budgets. The user edits/pins relevant evidence before `pre-register`. Defaults do not imply strong scientific preregistration; the report keeps unknowns visible.
 
 ## Layout and artifact inventory
 
@@ -102,9 +104,9 @@ Failure of an evaluation does not itself invalidate its receipt. Inclusions bind
 
 ## Inclusion interchange
 
-`prove proof create RECEIPT --index N --out FILE` emits canonical JSON with closed fields `{format, registration_id, receipt_id, manifest, result, event, index, size, siblings, proofs}`. Format is prove.inclusion.v1. Manifest/result are embedded parsed core objects whose canonical bytes reproduce the declared IDs; event is the complete canonical leaf object. Index/size are nonnegative safe integers, size equals result.records.count, index equals event.index, and both event bindings match the cores. Siblings is an array of lowercase 32-byte SHA256 hex strings consumed exactly by the RFC9162 verifier. Proofs is `{manifest, result}`, each null or base64 detached OTS bytes for the corresponding canonical core. The default JSON operation limit is 8MiB including embedded material; unusually large cores/proofs may require a future explicitly bounded larger inclusion policy, not an unbounded parse.
+`tallylock proof create RECEIPT --index N --out FILE` emits canonical JSON with closed fields `{format, registration_id, receipt_id, manifest, result, event, index, size, siblings, proofs}`. Format is prove.inclusion.v1. Manifest/result are embedded parsed core objects whose canonical bytes reproduce the declared IDs; event is the complete canonical leaf object. Index/size are nonnegative safe integers, size equals result.records.count, index equals event.index, and both event bindings match the cores. Siblings is an array of lowercase 32-byte SHA256 hex strings consumed exactly by the RFC9162 verifier. Proofs is `{manifest, result}`, each null or base64 detached OTS bytes for the corresponding canonical core. The default JSON operation limit is 8MiB including embedded material; unusually large cores/proofs may require a future explicitly bounded larger inclusion policy, not an unbounded parse.
 
-`prove verify --inclusion FILE` checks closed core/event schemas, IDs, selected attempt/profile, inventory and score binding shapes, membership and requested anchor policy. Included attempt_end must have index size-1; an included artifacts-profile artifact must occupy its inventory rank and match its entry. These contradictions are checkable from embedded data even without the full trace. It does not need records.jsonl or artifact files. It must report full-tree, trace-state-machine, actual resource totals, coverage and score recomputation not_checked. Even when a single artifact event matches its inventory entry, availability and whole-run consistency are not established. An inclusion check never emits a full record-validation verdict. Embedded OTS bytes are untrusted bounded data and cannot supply chain trust.
+`tallylock verify --inclusion FILE` checks closed core/event schemas, IDs, selected attempt/profile, inventory and score binding shapes, membership and requested anchor policy. Included attempt_end must have index size-1; an included artifacts-profile artifact must occupy its inventory rank and match its entry. These contradictions are checkable from embedded data even without the full trace. It does not need records.jsonl or artifact files. It must report full-tree, trace-state-machine, actual resource totals, coverage and score recomputation not_checked. Even when a single artifact event matches its inventory entry, availability and whole-run consistency are not established. An inclusion check never emits a full record-validation verdict. Embedded OTS bytes are untrusted bounded data and cannot supply chain trust.
 
 Conversely, an inclusion for the final position of a nonempty tree must contain attempt_end. This directly visible terminal contradiction is rejected even when its membership path and all supplied commitments are correct.
 

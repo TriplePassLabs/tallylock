@@ -12,8 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from bitcoin.core import CBlockHeader, b2lx
 import pytest
 
-from prove import _http, chain
-from prove.errors import ProveError
+from tallylock import _http, chain
+from tallylock.errors import TallyLockError
 
 
 HEADER = (Path(__file__).parent / "fixtures/ots/historical-header.hex").read_text().strip()
@@ -23,8 +23,8 @@ SECRET = "synthetic-user:synthetic-test-password"
 
 @pytest.fixture
 def evidence():
-    assert importlib.util.find_spec("prove.evidence") is not None, "Task6c exporter absent"
-    return importlib.import_module("prove.evidence")
+    assert importlib.util.find_spec("tallylock.evidence") is not None, "Task6c exporter absent"
+    return importlib.import_module("tallylock.evidence")
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def mock_rpc(monkeypatch, evidence, *, node=None, modify=None):
 
 
 def fails(code, callback):
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         callback()
     assert error.value.code == code
     assert SECRET not in str(error.value)
@@ -393,6 +393,6 @@ def test_actual_loopback_auth_is_in_header_never_subprocess_argv(evidence, confi
     finally:
         server.shutdown(); server.server_close(); thread.join()
     assert len(seen) == 5 and len(argv) == 5
-    assert all(args == [sys.executable, "-I", "-m", "prove._http"] for args in argv)
+    assert all(args == [sys.executable, "-I", "-m", "tallylock._http"] for args in argv)
     assert all(auth == "Basic " + base64.b64encode(SECRET.encode()).decode() for _, auth in seen)
     assert SECRET not in json.dumps(result)

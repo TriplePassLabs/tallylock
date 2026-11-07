@@ -11,11 +11,11 @@ import socket
 
 import pytest
 
-from prove.errors import ProveError
+from tallylock.errors import TallyLockError
 
 
 def api():
-    from prove import filesystem
+    from tallylock import filesystem
 
     return filesystem
 
@@ -179,7 +179,7 @@ def test_descendant_identity_scan_bounds_repeated_directory_inodes(tmp_path, mon
 
 
 def failure(call, code=2):
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         call()
     assert caught.value.code == code
 
@@ -365,7 +365,7 @@ def test_lock_failures_are_structured(tmp_path, monkeypatch, failure):
     else:
         monkeypatch.setattr(filesystem.os, "unlink", broken_unlink)
     with filesystem.Directory(tmp_path) as directory:
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             with filesystem.WriterLock(directory):
                 pass
     assert caught.value.code == 5
@@ -493,7 +493,7 @@ def test_stream_final_close_error_preserves_primary_and_closes_parent(tmp_path, 
 
     with filesystem.Directory(tmp_path) as directory:
         monkeypatch.setattr(filesystem.os, "close", close_then_fail)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             directory._stream("file.txt", lambda chunk: (_ for _ in ()).throw(OSError("primary stream failure")))
         monkeypatch.setattr(filesystem.os, "close", original_close)
     assert caught.value.code == 5
@@ -567,7 +567,7 @@ def test_enumeration_close_ownership(tmp_path, monkeypatch, layout, fail_at):
 def test_failed_file_open_preserves_primary_when_parent_close_fails(tmp_path, monkeypatch):
     with api().Directory(tmp_path) as directory:
         with close_faults(monkeypatch):
-            with pytest.raises(ProveError) as caught:
+            with pytest.raises(TallyLockError) as caught:
                 directory.read("missing")
             assert caught.value.code == 5
             assert "cannot open file" in str(caught.value)
@@ -596,7 +596,7 @@ def test_inspection_failure_survives_all_close_failures(tmp_path, monkeypatch, o
         with monkeypatch.context() as patch:
             patch.setattr(os, "fstat", broken_stat)
             with close_faults(patch):
-                with pytest.raises(KeyboardInterrupt if interruption else ProveError) as caught:
+                with pytest.raises(KeyboardInterrupt if interruption else TallyLockError) as caught:
                     calls[operation]()
                 assert "primary inspection" in str(caught.value)
                 if interruption:
@@ -619,7 +619,7 @@ def test_operation_primary_survives_all_close_failures(tmp_path, monkeypatch, op
             # Fail before a descriptor transition can short circuit acquisition.
             monkeypatch.setattr(directory, "_verify_dirs", broken)
         with close_faults(monkeypatch):
-            with pytest.raises(KeyboardInterrupt if interruption else ProveError) as caught:
+            with pytest.raises(KeyboardInterrupt if interruption else TallyLockError) as caught:
                 if operation == "stream":
                     directory._stream("file", broken)
                 elif operation == "write":
@@ -650,7 +650,7 @@ def test_reopened_file_inspection_preserves_primary(tmp_path, monkeypatch):
     with filesystem.Directory(tmp_path) as directory:
         monkeypatch.setattr(os, "fstat", broken_reopened_stat)
         with close_faults(monkeypatch, fail_at=2):
-            with pytest.raises(ProveError) as caught:
+            with pytest.raises(TallyLockError) as caught:
                 directory.read("file")
             assert "primary reopened inspection" in str(caught.value)
 
@@ -678,7 +678,7 @@ def test_each_persistence_close_boundary_is_structured(tmp_path, monkeypatch, op
                         pass
                 else:
                     filesystem.recover_lock(directory, hashlib.sha256(b"stale").hexdigest())
-            except ProveError as error:
+            except TallyLockError as error:
                 assert error.code == 5
                 assert len(closes) >= fail_at
             else:
@@ -691,7 +691,7 @@ def test_recovery_preserves_mismatch_when_cleanup_fails(tmp_path, monkeypatch):
     (tmp_path / ".prove" / "lock").write_bytes(b"stale")
     with filesystem.Directory(tmp_path) as directory:
         with close_faults(monkeypatch, fail_at=4):
-            with pytest.raises(ProveError) as caught:
+            with pytest.raises(TallyLockError) as caught:
                 filesystem.recover_lock(directory, "00" * 32)
             assert caught.value.code == 2
             assert "SHA256 does not match" in str(caught.value)
@@ -709,7 +709,7 @@ def test_lock_reopen_inspection_failure_survives_close_error(tmp_path, monkeypat
         with monkeypatch.context() as patch:
             patch.setattr(os, "fstat", broken_stat)
             with close_faults(patch):
-                with pytest.raises(ProveError) as caught:
+                with pytest.raises(TallyLockError) as caught:
                     filesystem._reachable_lock(directory.fd, identity)
                 assert "primary lock inspection" in str(caught.value)
 

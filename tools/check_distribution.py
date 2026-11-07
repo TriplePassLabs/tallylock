@@ -48,7 +48,7 @@ def main(argv=None):
         for entry in entries:
             safe_name(entry.filename)
             assert not stat.S_ISLNK(entry.external_attr >> 16), entry.filename
-        for relative, data in public_files(root, "src/prove"):
+        for relative, data in public_files(root, "src/tallylock"):
             expected = relative.removeprefix("src/")
             assert archive.read(expected) == data, f"missing or changed wheel asset: {expected}"
         metadata_files = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
@@ -60,7 +60,7 @@ def main(argv=None):
         prefix = metadata_path.removesuffix("METADATA")
         for name in ("LICENSE", "NOTICE"):
             assert archive.read(prefix + "licenses/" + name) == (root / name).read_bytes()
-        assert b"prove = prove.cli:main" in archive.read(prefix + "entry_points.txt")
+        assert b"tallylock = tallylock.cli:main" in archive.read(prefix + "entry_points.txt")
         wheel_files = len(entries)
 
     required = {name: (root / name).read_bytes() for name in
@@ -68,7 +68,7 @@ def main(argv=None):
                  "docs/PROTOCOL.md", "docs/QUICKSTART.md", "docs/INTEGRATION.md",
                  "conformance/README.md", "tools/reference_verify.py", "tools/check_install.py",
                  "tools/check_distribution.py", "tests/reference_corpus_author.py")}
-    for directory in ("src/prove", "tests", "docs", "examples/basic", "conformance", "tools"):
+    for directory in ("src/tallylock", "tests", "docs", "examples/basic", "conformance", "tools"):
         required.update(public_files(root, directory))
     with tarfile.open(sdist, "r:gz") as archive:
         entries = archive.getmembers()

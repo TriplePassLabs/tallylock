@@ -8,7 +8,7 @@ from pathlib import Path
 from bitcoin.core import CBlockHeader, b2lx
 import pytest
 
-from prove.errors import ProveError
+from tallylock.errors import TallyLockError
 
 
 HEADER = bytes.fromhex((Path(__file__).parent / "fixtures/ots/historical-header.hex").read_text())
@@ -37,7 +37,7 @@ class ModuleByName:
     """Delay module availability assertion to the behavior test, before source exists."""
 
     def __init__(self, name):
-        self.name = f"prove.{name}"
+        self.name = f"tallylock.{name}"
 
     def __getattr__(self, name):
         assert importlib.util.find_spec(self.name) is not None, f"Task6a {self.name} module absent"
@@ -83,7 +83,7 @@ def test_historical_header_fields_and_defensive_snapshots(chain_module):
 def test_invalid_cache_bindings_fail_two(chain_module, change):
     value = cache_for()
     change(value)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         chain_module.prepare(value)
     assert error.value.code == 2
 
@@ -94,10 +94,10 @@ def test_every_header_is_checked_and_tip_hash_is_bound(chain_module):
     chain_module.prepare(value)
     bad = deepcopy(value)
     bad["blocks"]["1"]["hash"] = "00" * 32
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         chain_module.prepare(bad)
     value["tip"]["hash"] = "00" * 32
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         chain_module.prepare(value)
 
 
@@ -105,21 +105,21 @@ def test_empty_cache_and_unknown_format(chain_module):
     assert chain_module.prepare(cache_for({})).block(1) is None
     value = cache_for()
     value["format"] = "prove.chain.v2"
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         chain_module.prepare(value)
     assert error.value.code == 4
 
 
 @pytest.mark.parametrize("height", [True, -1, 1.0, "1", None, 2**53])
 def test_lookup_rejects_non_safe_height(chain_module, height):
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         chain_module.prepare(cache_for()).block(height)
     assert error.value.code == 2
 
 
 @pytest.mark.parametrize("value", [None, [], True, "cache"])
 def test_malformed_cache_uses_typed_error(chain_module, value):
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         chain_module.prepare(value)
     assert error.value.code == 2
 
@@ -130,6 +130,6 @@ def test_deep_untrusted_cache_is_rejected_before_recursive_copy(chain_module):
     for _ in range(1200):
         nested["extra"] = {}
         nested = nested["extra"]
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         chain_module.prepare(value)
     assert error.value.code == 2

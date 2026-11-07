@@ -3,8 +3,8 @@ import hashlib
 
 import pytest
 
-from prove import fixture, scoring
-from prove.errors import ProveError
+from tallylock import fixture, scoring
+from tallylock.errors import TallyLockError
 
 
 def checked():
@@ -13,7 +13,7 @@ def checked():
         "format": "prove.result.v1", "registration_id": "0" * 64,
     }
     # The fixture is deliberately data-only; build the seal-shaped result here.
-    from prove import canonical, merkle, records
+    from tallylock import canonical, merkle, records
     events = value.events
     data = records.encode(events)
     result = {
@@ -72,9 +72,9 @@ def test_fixture_score_rejects_honestly_rehashed_mathematically_wrong_score():
     artifacts = copy.deepcopy(value.artifacts)
     artifacts["scores.json"] = artifacts["scores.json"].replace(b'"blue"', b'"green"')
     rebind_score(result, artifacts)
-    from prove import schema
+    from tallylock import schema
     assert schema.validate_result(result, value.manifest) is result
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(artifacts, []))
 
 
@@ -82,9 +82,9 @@ def test_fixture_score_rejects_actual_bytes_that_do_not_match_rebound_hash_field
     value, result = checked()
     result["inventory"]["scores.json"]["sha256"] = "f" * 64
     result["score"]["sha256"] = "f" * 64
-    from prove import schema
+    from tallylock import schema
     assert schema.validate_result(result, value.manifest) is result
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(value.artifacts, []))
 
 
@@ -102,7 +102,7 @@ def test_fixture_score_checks_score_and_result_aggregates(path, update):
         rebind_score(result, value.artifacts)
     else:
         result["score"].update(update)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(value.artifacts, []))
 
 
@@ -113,19 +113,19 @@ def test_fixture_score_checks_score_and_result_aggregates(path, update):
 ])
 def test_fixture_score_rejects_missing_duplicate_or_extra_selected_ids(sample_ids, aggregate):
     value, result = checked()
-    from prove import canonical
+    from tallylock import canonical
     payload = canonical.loads(value.artifacts["scores.json"])
     payload["samples"] = [{"id": sample_id, "observed": "red"} for sample_id in sample_ids]
     payload["aggregate"] = aggregate
     value.artifacts["scores.json"] = canonical.dumps(payload)
     rebind_score(result, value.artifacts)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(value.artifacts, []))
 
 
 def test_fixture_score_accepts_shuffled_samples_but_not_unicode_or_case_changes():
     value, result = checked()
-    from prove import canonical
+    from tallylock import canonical
     payload = canonical.loads(value.artifacts["scores.json"])
     payload["samples"].reverse()
     value.artifacts["scores.json"] = canonical.dumps(payload)
@@ -134,7 +134,7 @@ def test_fixture_score_accepts_shuffled_samples_but_not_unicode_or_case_changes(
     payload["samples"][1]["observed"] = "BLUE"
     value.artifacts["scores.json"] = canonical.dumps(payload)
     rebind_score(result, value.artifacts)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(value.artifacts, []))
 
 
@@ -142,7 +142,7 @@ def test_fixture_score_rejects_raw_artifact_over_8mib():
     value, result = checked()
     value.artifacts["scores.json"] = b"x" * (scoring.MAX_FIXTURE_BYTES + 1)
     rebind_score(result, value.artifacts)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, reader(value.artifacts, []))
 
 
@@ -162,7 +162,7 @@ def test_null_score_is_unavailable_without_artifact_reads():
 def test_recorded_only_never_parses_arbitrary_score_bytes():
     value, result = checked()
     value.manifest["scorer"] = {"profile": "recorded-only-v1", "revision": "opaque"}
-    from prove import canonical
+    from tallylock import canonical
     result["registration_id"] = canonical.digest(value.manifest)
     result["score"]["profile"] = "recorded-only-v1"
     value.artifacts["scores.json"] = b"not json at all"

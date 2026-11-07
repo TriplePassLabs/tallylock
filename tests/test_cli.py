@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-from prove import canonical, fixture, schema, store
+from tallylock import canonical, fixture, schema, store
 
 
 FIELDS = {'format', 'command', 'code', 'registration_id', 'receipt_id', 'local_state',
@@ -20,9 +20,9 @@ FIELDS = {'format', 'command', 'code', 'registration_id', 'receipt_id', 'local_s
 
 def run(*args, patch=None, code=0, cwd=None, entry=False):
     if patch is None:
-        cmd = [str(Path(sys.executable).parent / 'prove')] if entry else [sys.executable, '-m', 'prove']
+        cmd = [str(Path(sys.executable).parent / 'tallylock')] if entry else [sys.executable, '-m', 'tallylock']
     else:
-        cmd = [sys.executable, '-c', patch + '\nfrom prove.cli import main\nraise SystemExit(main())']
+        cmd = [sys.executable, '-c', patch + '\nfrom tallylock.cli import main\nraise SystemExit(main())']
     result = subprocess.run(cmd + [str(a) for a in args], capture_output=True, text=True,
                             cwd=cwd, timeout=20)
     assert result.returncode == code, (result.returncode, result.stdout, result.stderr)
@@ -64,9 +64,9 @@ def test_version_entrypoints_and_passive_import(tmp_path):
     assert run('--version').strip() == '0.1.0a1'
     assert run('--version', entry=True).strip() == '0.1.0a1'
     result = subprocess.run([sys.executable, '-c',
-        "import prove,sys; from importlib.metadata import version; "
-        "assert prove.__version__ == version('triplepass-prove'); "
-        "assert not any(n in sys.modules for n in ('prove.cli','prove.fixture','prove.timestamping'))"],
+        "import tallylock,sys; from importlib.metadata import version; "
+        "assert tallylock.__version__ == version('tallylock'); "
+        "assert not any(n in sys.modules for n in ('tallylock.cli','tallylock.fixture','tallylock.timestamping'))"],
         capture_output=True, text=True, timeout=10, cwd=tmp_path)
     assert result.returncode == 0, result.stderr
 
@@ -182,7 +182,7 @@ def test_unsealed_inspection_and_input_failures_are_command_reports(tmp_path):
 
 
 @pytest.mark.parametrize('command', ['pre-register', 'seal'])
-@pytest.mark.parametrize('failure,code,state', [('prove', 4, 'failed'), ('interrupt', 130, 'interrupted'), ('unexpected', 5, 'failed')])
+@pytest.mark.parametrize('failure,code,state', [('tallylock', 4, 'failed'), ('interrupt', 130, 'interrupted'), ('unexpected', 5, 'failed')])
 def test_optional_anchor_failure_retains_local_completion(tmp_path, command, failure, code, state):
     manifest = tmp_path / 'manifest.json'
     receipt = tmp_path / 'receipt'
@@ -192,9 +192,9 @@ def test_optional_anchor_failure_retains_local_completion(tmp_path, command, fai
     report('init', '--out', manifest)
     if command == 'seal':
         report('pre-register', manifest, '--receipt', receipt)
-    raised = {'prove': "ProveError('SECRET backend data',4)", 'interrupt': 'KeyboardInterrupt()',
+    raised = {'tallylock': "TallyLockError('SECRET backend data',4)", 'interrupt': 'KeyboardInterrupt()',
               'unexpected': "RuntimeError('SECRET backend data')"}[failure]
-    patch = ("from prove import timestamping\nfrom prove.errors import ProveError\n"
+    patch = ("from tallylock import timestamping\nfrom tallylock.errors import TallyLockError\n"
              f"def fail(*a,**kw): raise {raised}\ntimestamping.submit=fail\n")
     args = ('pre-register', manifest, '--receipt', receipt) if command == 'pre-register' else ('seal', receipt, '--artifacts', outputs)
     value = report(*args, '--anchor', 'ots', patch=patch, code=code)
@@ -212,7 +212,7 @@ def test_optional_anchor_failure_retains_local_completion(tmp_path, command, fai
 def test_explicit_timestamp_actions_dispatch_without_source(tmp_path, action):
     _, receipt, outputs, _, _ = generic(tmp_path)
     shutil.rmtree(outputs)
-    patch = ("from prove import timestamping\n"
+    patch = ("from tallylock import timestamping\n"
              "def fake(receipt,*,targets): return {'targets':list(targets),'state':'pending'}\n"
              f"timestamping.{ 'submit' if action == 'anchor' else 'upgrade'}=fake\n")
     value = report(action, receipt, '--target', 'manifest', patch=patch)
@@ -232,7 +232,7 @@ def test_recovery_commands_and_export_dispatch(tmp_path):
     value = report('recover-lock', receipt, '--observed-sha256', hashlib.sha256(b'').hexdigest())
     assert value['local_state'] == 'lock_recovered'
     assert value['receipt_id'] is None
-    patch = "from prove import evidence\nevidence.export=lambda *a: {'tip':{'height':8,'hash':'12'*32},'blocks':{'3':{},'2':{}}}\n"
+    patch = "from tallylock import evidence\nevidence.export=lambda *a: {'tip':{'height':8,'hash':'12'*32},'blocks':{'3':{},'2':{}}}\n"
     output = tmp_path / 'chain.json'
     value = report('evidence', 'export', '--bitcoin-rpc', tmp_path / 'trusted-config.json',
                    '--height', '3', '--height', '2', '--out', output, patch=patch)
@@ -270,10 +270,10 @@ def test_inspect_bounded_preview_does_not_scan_artifacts_or_local_state(tmp_path
 
 
 def test_bind_output_alias_rejection_when_worker_mount_available():
-    receipt = os.environ.get('PROVE_ALIAS_RECEIPT')
+    receipt = os.environ.get('TALLYLOCK_ALIAS_RECEIPT')
     if not receipt:
         pytest.skip('main-owned bind alias worker mounts required')
-    report('proof', 'create', receipt, '--index', '0', '--out', '/prove-source-alias/bad.json', code=2)
+    report('proof', 'create', receipt, '--index', '0', '--out', '/tallylock-source-alias/bad.json', code=2)
 
 
 @pytest.mark.parametrize('operation', ['register', 'proof'])
@@ -282,7 +282,7 @@ def test_selected_receipt_rename_never_writes_replacement_decoy(tmp_path, operat
     moved = tmp_path / 'moved'
     output = tmp_path / 'inclusion.json'
     module, name = ('store', 'register') if operation == 'register' else ('verify', 'make_inclusion')
-    patch = (f"from prove import {module}\nfrom pathlib import Path\n"
+    patch = (f"from tallylock import {module}\nfrom pathlib import Path\n"
              f"real={module}.{name}\n"
              "def swap(*a,**kw):\n"
              f"    Path({str(receipt)!r}).rename({str(moved)!r})\n"
@@ -301,16 +301,16 @@ def test_selected_receipt_rename_never_writes_replacement_decoy(tmp_path, operat
 def test_main_restores_cwd_after_backend_failure(tmp_path, failure, code):
     _, receipt, outputs, _, _ = generic(tmp_path)
     raised = "OSError('SECRET')" if failure == 'os' else 'KeyboardInterrupt()'
-    patch = ("import os\nfrom prove import store\n"
+    patch = ("import os\nfrom tallylock import store\n"
              "initial=os.getcwd()\n"
              f"def fail(*a,**kw): raise {raised}\nstore.seal=fail\n"
-             "from prove.cli import main\n"
+             "from tallylock.cli import main\n"
              "real_main=main\n"
              "def check(argv=None):\n"
              "    result=real_main(argv)\n"
              "    assert os.getcwd()==initial\n"
              "    return result\n"
-             "import prove.cli\nprove.cli.main=check\n")
+             "import tallylock.cli\ntallylock.cli.main=check\n")
     report('seal', receipt, '--artifacts', outputs, patch=patch, code=code)
 
 
@@ -323,7 +323,7 @@ def test_real_timestamp_backend_partial_progress_and_cleanup(tmp_path, mode, cod
     (outputs / 'output.txt').write_bytes(b'frozen')
     report('init', '--out', manifest)
     report('pre-register', manifest, '--receipt', receipt)
-    patch = ("from prove import transport,timestamping\nfrom prove.errors import ProveError\n"
+    patch = ("from tallylock import transport,timestamping\nfrom tallylock.errors import TallyLockError\n"
              "from opentimestamps.core.timestamp import Timestamp\n"
              "from opentimestamps.core.notary import PendingAttestation\n"
              "from opentimestamps.core.serialize import BytesSerializationContext\n"
@@ -334,7 +334,7 @@ def test_real_timestamp_backend_partial_progress_and_cleanup(tmp_path, mode, cod
              f"    mode={mode!r}\n"
              "    if mode=='interrupt' and calls==2: raise KeyboardInterrupt()\n"
              "    if mode=='all-fail' or (mode=='partial-core' and calls%2==0) or (mode=='partial-calendar' and calls>2):\n"
-             "        raise ProveError('SECRET network response',5)\n"
+             "        raise TallyLockError('SECRET network response',5)\n"
              "    stamp=Timestamp(commitment)\n"
              "    stamp.attestations.add(PendingAttestation(origin))\n"
              "    ctx=BytesSerializationContext()\n    stamp.serialize(ctx)\n    return ctx.getbytes()\n"
@@ -354,7 +354,7 @@ def test_real_timestamp_backend_partial_progress_and_cleanup(tmp_path, mode, cod
         assert value['anchor_action'] == {'state': 'failed', 'report': None}
         # An explicit retry uses saved state, never the original output source.
         shutil.rmtree(outputs)
-        retry_patch = ("from prove import timestamping,transport\n"
+        retry_patch = ("from tallylock import timestamping,transport\n"
                        "timestamping.DEFAULT_AGGREGATORS=['https://a.pool.opentimestamps.org','https://b.pool.opentimestamps.org']\n"
                        "def forbidden(*a,**kw): raise AssertionError('unexpected online request')\n"
                        "transport.submit=forbidden\ntransport.upgrade=forbidden\n")
@@ -411,7 +411,7 @@ def test_minimum_confirmation_argument_and_verifier_report_passthrough(tmp_path)
     value = report('verify', receipt, '--min-confirmations', '9', code=3)
     assert value['minimum_confirmations'] == 9
     # A called verifier owns its exact shape/code, including unsupported evidence.
-    patch = ("from prove import verify\n"
+    patch = ("from tallylock import verify\n"
              "verify.full=lambda *a,**kw: verify.Verification(4,{'format':'test.verifier','code':4,'marker':'exact'})\n")
     assert report('verify', receipt, patch=patch, code=4) == {'format': 'test.verifier', 'code': 4, 'marker': 'exact'}
 
@@ -419,12 +419,12 @@ def test_minimum_confirmation_argument_and_verifier_report_passthrough(tmp_path)
 def test_no_producer_import_or_metadata_execution(tmp_path):
     marker = tmp_path / 'must-not-execute'
     manifest = schema.default_manifest()
-    manifest['metadata'] = {'command': f'touch {marker}', 'module': 'prove.fixture'}
+    manifest['metadata'] = {'command': f'touch {marker}', 'module': 'tallylock.fixture'}
     path = tmp_path / 'manifest.json'
     path.write_bytes(canonical.dumps(manifest))
     patch = ("import builtins\nreal_import=builtins.__import__\n"
              "def checked(name,*a,**kw):\n"
-             "    assert name not in ('prove.fixture','inspect_ai','openai','anthropic','torch')\n"
+             "    assert name not in ('tallylock.fixture','inspect_ai','openai','anthropic','torch')\n"
              "    return real_import(name,*a,**kw)\n"
              "builtins.__import__=checked\n")
     report('pre-register', path, '--receipt', tmp_path / 'receipt', patch=patch)
@@ -450,7 +450,7 @@ def test_inspection_preview_is_utf8_sorted_and_capped_at_100(tmp_path):
 
 def test_closed_stdout_has_no_traceback_or_retry_loop(tmp_path):
     manifest = tmp_path / 'manifest.json'
-    child = subprocess.Popen([sys.executable, '-m', 'prove', 'init', '--out', str(manifest)],
+    child = subprocess.Popen([sys.executable, '-m', 'tallylock', 'init', '--out', str(manifest)],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     child.stdout.close()
     assert child.wait(timeout=10) == 5
@@ -520,8 +520,8 @@ def test_explicit_timestamp_actions_retain_validated_existing_state(tmp_path, ac
     report('pre-register', path, '--receipt', receipt)
     if sealed:
         report('seal', receipt, '--outcome', 'failed', '--reason', 'Synthetic external failure')
-    raised = "KeyboardInterrupt()" if interrupted else "ProveError('PRIVATE_CALENDAR_AUTH_BODY',5)"
-    patch = ("from prove import timestamping\nfrom prove.errors import ProveError\n"
+    raised = "KeyboardInterrupt()" if interrupted else "TallyLockError('PRIVATE_CALENDAR_AUTH_BODY',5)"
+    patch = ("from tallylock import timestamping\nfrom tallylock.errors import TallyLockError\n"
              f"def fail(*a,**kw): raise {raised}\n"
              f"timestamping.{'submit' if action == 'anchor' else 'upgrade'}=fail\n")
     answer = report(action, receipt, '--target', 'manifest', patch=patch, code=130 if interrupted else 5)
@@ -535,7 +535,7 @@ def test_explicit_timestamp_actions_retain_validated_existing_state(tmp_path, ac
 def test_full_stdout_device_returns_operational_failure_with_local_bytes_preserved(tmp_path):
     manifest = tmp_path / 'manifest.json'
     with open('/dev/full', 'wb') as sink:
-        child = subprocess.run([sys.executable, '-m', 'prove', 'init', '--out', str(manifest)],
+        child = subprocess.run([sys.executable, '-m', 'tallylock', 'init', '--out', str(manifest)],
                                stdout=sink, stderr=subprocess.PIPE, timeout=10)
     assert child.returncode == 5, child.stderr
     assert child.stderr == b''
@@ -555,12 +555,12 @@ def test_injected_terminal_stdout_io_error_is_not_retried(tmp_path, number):
              "    def flush(self): return None\n"
              "    def fileno(self): return real_stdout.fileno()\n"
              "sink=FailedSink()\nsys.stdout=sink\n"
-             "from prove.cli import main\nreal_main=main\n"
+             "from tallylock.cli import main\nreal_main=main\n"
              "def checked(argv=None):\n"
              "    result=real_main(argv)\n"
              "    assert sink.attempts==1\n"
              "    return result\n"
-             "import prove.cli\nprove.cli.main=checked\n")
+             "import tallylock.cli\ntallylock.cli.main=checked\n")
     assert run('init', '--out', manifest, patch=patch, code=5) == ''
     assert manifest.exists()
 
@@ -574,7 +574,7 @@ def test_stdout_descriptor_closed_after_startup_transfers_devnull_ownership(tmp_
 def test_stdout_absent_from_interpreter_startup_preserves_local_work(tmp_path):
     manifest = tmp_path / 'manifest.json'
     child = subprocess.run(['sh', '-c', 'exec "$@" 1>&-', 'prove-stdout-test',
-                            sys.executable, '-m', 'prove', 'init', '--out', str(manifest)],
+                            sys.executable, '-m', 'tallylock', 'init', '--out', str(manifest)],
                            capture_output=True, timeout=10)
     assert child.returncode == 5, child.stderr
     assert child.stdout == child.stderr == b''

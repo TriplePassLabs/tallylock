@@ -11,15 +11,15 @@ import sys
 
 import pytest
 
-from prove import canonical, filesystem, records
-from prove.errors import ProveError
+from tallylock import canonical, filesystem, records
+from tallylock.errors import TallyLockError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def api():
-    from prove import store
+    from tallylock import store
     return store
 
 
@@ -64,10 +64,10 @@ def test_registration_freezes_canonical_bytes_and_rejects_conflict(tmp_path):
     assert api().register(loaded, tmp_path) == hashlib.sha256(expected).hexdigest()
     loaded["metadata"]["later"] = True
     assert api().load_manifest(tmp_path)["metadata"] == canonical.loads(expected)["metadata"]
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().register(core, tmp_path)
     (tmp_path / "manifest.json").write_bytes(expected + b"\n")
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().load_manifest(tmp_path)
 
 
@@ -97,9 +97,9 @@ def test_multiple_attempts_and_bad_options_do_not_publish(tmp_path):
     core = manifest()
     core["attempts"].append({"id": "run-2", "sample_ids": []})
     api().register(core, tmp_path)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(tmp_path, outcome="failed", reason="stopped")
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(tmp_path, attempt_id="run-2", outcome="failed", reason="stopped", aggregate={"numerator": 1, "denominator": 1})
     assert not (tmp_path / "result.json").exists()
     result = api().seal(tmp_path, attempt_id="run-2", outcome="failed", reason="stopped")
@@ -121,7 +121,7 @@ def test_conflicting_completed_candidate_cannot_add_new_artifact(tmp_path):
     final = (receipt / "result.json").read_bytes()
     journal = (receipt / ".prove" / "seal.json").read_bytes()
     (source / "NEW.txt").write_bytes(b"new")
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert (receipt / "result.json").read_bytes() == final
     assert (receipt / ".prove" / "seal.json").read_bytes() == journal
@@ -145,7 +145,7 @@ def test_interruption_retains_candidate_and_recovery_ignores_live_source(tmp_pat
                     or (point == "result" and path == "result.json"))
         if selected and not fired:
             fired = True
-            raise ProveError("injected interruption", code=5)
+            raise TallyLockError("injected interruption", code=5)
         return write(self, path, data, replace)
 
     def interrupt_copy(self, path, destination, destination_path):
@@ -154,18 +154,18 @@ def test_interruption_retains_candidate_and_recovery_ignores_live_source(tmp_pat
                     or (point == "artifact" and destination_path.startswith("artifacts/")))
         if selected and not fired:
             fired = True
-            raise ProveError("injected interruption", code=5)
+            raise TallyLockError("injected interruption", code=5)
         return copy(self, path, destination, destination_path)
 
     monkeypatch.setattr(filesystem.Directory, "atomic_write", interrupt_write)
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", interrupt_copy)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert fired and not (receipt / "result.json").exists()
     monkeypatch.setattr(filesystem.Directory, "atomic_write", write)
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", copy)
     if point.startswith("stage_") or point == "journal":
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             api().recover_seal(receipt)
         result = api().seal(receipt, source)
     else:
@@ -180,14 +180,14 @@ def test_pending_journal_conflict_is_preserved(tmp_path, monkeypatch):
     original = filesystem.Directory.copy_file_to
     def stop(self, path, destination, destination_path):
         if destination_path.startswith("artifacts/"):
-            raise ProveError("interrupted", code=5)
+            raise TallyLockError("interrupted", code=5)
         return original(self, path, destination, destination_path)
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", stop)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     journal = (receipt / ".prove" / "seal.json").read_bytes()
     (source / "Résumé.txt").write_bytes(b"changed")
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert (receipt / ".prove" / "seal.json").read_bytes() == journal
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", original)
@@ -202,7 +202,7 @@ def test_journal_substitution_fails_closed(tmp_path, change):
     value = canonical.loads(journal_path.read_bytes())
     value[change] = "../outside" if change == "stage" else "00" * 32
     journal_path.write_bytes(canonical.dumps(value))
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().recover_seal(receipt)
 
 
@@ -225,7 +225,7 @@ def test_root_allowlist_and_source_overlap(tmp_path, kind):
         alias = tmp_path / "alias"
         alias.symlink_to(tmp_path, target_is_directory=True)
         source = alias / "receipt"
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert not (receipt / "result.json").exists()
 
@@ -253,7 +253,7 @@ def test_fsync_failed_visible_artifact_requires_repair_on_retry(tmp_path, monkey
         if final == "Résumé.txt" and (receipt / "artifacts" / "Résumé.txt").exists():
             raise OSError(errno.EIO, "injected directory fsync failure")
     monkeypatch.setattr(filesystem.Directory, "_publish", fail_after_publish)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert (receipt / "artifacts" / "Résumé.txt").exists()
     monkeypatch.setattr(filesystem.Directory, "_publish", publish)
@@ -270,7 +270,7 @@ def test_fsync_failed_visible_artifact_requires_repair_on_retry(tmp_path, monkey
 def test_missing_io_and_live_writer_are_not_ignored(tmp_path, monkeypatch):
     receipt, source = roots(tmp_path)
     with filesystem.Directory(receipt) as directory, filesystem.WriterLock(directory):
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             api().seal(receipt, source)
         assert caught.value.code == 5
     original = os.open
@@ -281,7 +281,7 @@ def test_missing_io_and_live_writer_are_not_ignored(tmp_path, monkeypatch):
             raise OSError(errno.EIO, "injected bad disk")
         return original(path, flags, *args, **kwargs)
     monkeypatch.setattr(os, "open", broken)
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         api().seal(receipt, source)
     assert caught.value.code == 5 and not (receipt / "result.json").exists()
 
@@ -294,7 +294,7 @@ def test_empty_final_directory_conflicts_are_preflighted_before_any_normative_co
     target.parent.mkdir(exist_ok=True, parents=True)
     target.write_bytes(b"conflict")
     (receipt / "artifacts" / existing).mkdir(parents=True)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert not (receipt / "artifacts" / "a").exists()
     assert not (receipt / "records.jsonl").exists()
@@ -321,7 +321,7 @@ def test_trace_records_can_exceed_the_core_json_limit(tmp_path):
 ])
 def test_invalid_data_options_never_publish_normative_files(tmp_path, options):
     receipt, source = roots(tmp_path)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source, **options)
     assert not (receipt / "artifacts").exists()
     assert not (receipt / "records.jsonl").exists()
@@ -346,7 +346,7 @@ def test_snapshot_freezes_caller_options_before_copy_and_rejects_source_set_chan
         return copied
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", change_source_set)
     assert not (source / "new").exists()
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(other, source)
     assert not (other / ".prove" / "seal.json").exists()
     assert not (other / "result.json").exists()
@@ -358,7 +358,7 @@ def test_wire_over_limit_source_name_is_rejected_without_renaming(tmp_path):
     target = source / name
     target.parent.mkdir(parents=True)
     target.write_bytes(b"too long")
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     assert target.read_bytes() == b"too long"
     assert not (receipt / "result.json").exists()
@@ -392,7 +392,7 @@ def test_recovery_revalidates_every_staged_binding(tmp_path, part):
         journal_path.rename(moved)
         journal_path.symlink_to(moved)
     final = (receipt / "result.json").read_bytes()
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().recover_seal(receipt)
     assert (receipt / "result.json").read_bytes() == final
 
@@ -404,15 +404,15 @@ def test_interruption_after_visible_publication_requires_explicit_revalidation(t
     def broken_write(self, path, data, replace=False):
         write(self, path, data, replace)
         if path == {"journal": ".prove/seal.json", "records": "records.jsonl", "result": "result.json"}.get(point):
-            raise ProveError("injected post-publication fsync/close error", code=5)
+            raise TallyLockError("injected post-publication fsync/close error", code=5)
     def broken_copy(self, path, destination, destination_path):
         copied = copy(self, path, destination, destination_path)
         if point == "artifact" and destination_path.startswith("artifacts/"):
-            raise ProveError("injected post-publication fsync/close error", code=5)
+            raise TallyLockError("injected post-publication fsync/close error", code=5)
         return copied
     monkeypatch.setattr(filesystem.Directory, "atomic_write", broken_write)
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", broken_copy)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(receipt, source)
     monkeypatch.setattr(filesystem.Directory, "atomic_write", write)
     monkeypatch.setattr(filesystem.Directory, "copy_file_to", copy)
@@ -429,7 +429,7 @@ def test_retry_cannot_succeed_while_matching_artifact_fsync_still_fails(tmp_path
         return sync(fd)
     monkeypatch.setattr(os, "fsync", broken_sync)
     for operation in (lambda: api().seal(receipt, source), lambda: api().recover_seal(receipt)):
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             operation()
         assert caught.value.code == 5
         assert not (receipt / "result.json").exists()
@@ -447,7 +447,7 @@ def test_trace_known_budget_excess_is_never_silently_rewritten(tmp_path):
     events = events[:1] + [call(core, 1, usage=usage), call(core, 2)] + events[1:]
     for index, value in enumerate(events):
         value["index"] = index
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().seal(tmp_path, events=events)
     assert not (tmp_path / "result.json").exists()
     events[-1].update(outcome="budget_exceeded", reason="known excess")
@@ -478,7 +478,7 @@ def test_new_registration_refuses_to_adopt_foreign_normative_contents(tmp_path, 
         target.write_bytes(b"foreign")
     else:
         target.mkdir()
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         api().register(manifest(), tmp_path)
     assert not (tmp_path / "manifest.json").exists()
 
@@ -491,10 +491,10 @@ def test_seal_and_recovery_require_manifest_file_durability(tmp_path, monkeypatc
     original = filesystem.Directory.persist_file
     def fail_manifest(self, path):
         if path == "manifest.json":
-            raise ProveError("manifest file fsync failed", code=5)
+            raise TallyLockError("manifest file fsync failed", code=5)
         return original(self, path)
     monkeypatch.setattr(filesystem.Directory, "persist_file", fail_manifest)
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         api().recover_seal(receipt) if recover else api().seal(receipt, source)
     assert caught.value.code == 5
 
@@ -505,7 +505,7 @@ def test_stale_lock_is_not_implicitly_removed_or_treated_as_pid_evidence(tmp_pat
     stale = b'{"pid":999999999,"token":"stale"}'
     lock.write_bytes(stale)
     for operation in (lambda: api().seal(receipt, source), lambda: api().recover_seal(receipt)):
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             operation()
         assert caught.value.code == 5
         assert lock.read_bytes() == stale
@@ -519,7 +519,7 @@ def test_real_process_exit_after_checkpoint_requires_observed_lock_recovery(tmp_
 import os
 from pathlib import Path
 import sys
-from prove import filesystem, store
+from tallylock import filesystem, store
 write = filesystem.Directory.atomic_write
 def checkpoint_exit(self, path, data, replace=False):
     write(self, path, data, replace)
@@ -533,7 +533,7 @@ store.seal(Path(sys.argv[1]), Path(sys.argv[2]))
     assert exited.returncode == 77, exited.stderr.decode()
     lock = receipt / ".prove" / "lock"
     assert lock.is_file()
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         api().recover_seal(receipt)
     assert caught.value.code == 5
     observed = hashlib.sha256(lock.read_bytes()).hexdigest()
@@ -559,7 +559,7 @@ def test_missing_descendant_is_not_an_absent_artifact_root(tmp_path, monkeypatch
     monkeypatch.setattr(os, "open", vanished)
     with filesystem.Directory(tmp_path) as directory:
         call_helper = getattr(api(), helper)
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             call_helper(directory, "artifacts") if helper == "_artifact_files" else call_helper(directory)
         assert caught.value.code == 5
 
@@ -567,16 +567,16 @@ def test_missing_descendant_is_not_an_absent_artifact_root(tmp_path, monkeypatch
 def test_optional_artifact_root_does_not_hide_missing_ancestors(tmp_path):
     with filesystem.Directory(tmp_path) as directory:
         assert api()._artifact_files(directory, "artifacts") == {}
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             api()._artifact_files(directory, ".prove/staging/" + "ab" * 16 + "/artifacts")
 
 
 def test_optional_core_read_does_not_hide_disappearance_after_initial_open(tmp_path, monkeypatch):
     (tmp_path / "result.json").write_bytes(b"existing")
     def vanished_read(self, path, limit=8_388_608):
-        raise ProveError("file disappeared during stable read", code=5) from FileNotFoundError(errno.ENOENT, "gone")
+        raise TallyLockError("file disappeared during stable read", code=5) from FileNotFoundError(errno.ENOENT, "gone")
     monkeypatch.setattr(filesystem.Directory, "read", vanished_read)
     with filesystem.Directory(tmp_path) as directory:
-        with pytest.raises(ProveError) as caught:
+        with pytest.raises(TallyLockError) as caught:
             api()._optional_read(directory, "result.json")
         assert caught.value.code == 5

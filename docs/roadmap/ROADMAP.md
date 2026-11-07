@@ -1,4 +1,4 @@
-# Prove roadmap proposal
+# TallyLock roadmap proposal
 
 Status: reviewable product roadmap, not an implementation plan or approval to deploy. Feature details and dependencies are in FEATURES.json. Every phase ends in a usable vertical slice; later phases are optional expansion, not prerequisites for the first public alpha.
 
@@ -11,7 +11,7 @@ Status: reviewable product roadmap, not an implementation plan or approval to de
 
 The catalog has exactly twenty distinct features. Existing hashes, Merkle proofs and JSON output are foundations, not new entries by themselves.
 
-Website discovery and reciprocal lab/GitHub links are cross-cutting distribution work under F01/F17, not another feature. See [WEBSITE_PLAN.md](WEBSITE_PLAN.md) for the proposed `/prove` landing page, canonical documentation ownership and release-link checks. Offline verification never depends on that website.
+Website discovery and reciprocal lab/GitHub links are cross-cutting distribution work under F01/F17, not another feature. See [WEBSITE_PLAN.md](WEBSITE_PLAN.md) for the proposed `/tallylock` landing page, canonical documentation ownership and release-link checks. Offline verification never depends on that website.
 
 ## Phase 1: A normal user can install and check a receipt
 
@@ -91,6 +91,6 @@ Exact module filenames beyond current surfaces are design suggestions, to be fro
 
 Track setup completion, time to first local receipt, correct trust comprehension, recovery success, provider outage behavior, agent contract compatibility and external-user defects. Record denominators and platform/version for every claim. Do not substitute downloads, feature count or green unit tests for observed user success.
 
-Pause expansion if phase-1 users cannot explain Prove's extra value over hashes plus OTS, or if setup remains confusing. Simplify wording and workflow before adding node management or integrations. No subscriptions, dashboards, model runners or provider accounts are required to make a receipt useful.
+Pause expansion if phase-1 users cannot explain TallyLock's extra value over hashes plus OTS, or if setup remains confusing. Simplify wording and workflow before adding node management or integrations. No subscriptions, dashboards, model runners or provider accounts are required to make a receipt useful.
 
 Ready for review now: DESIGN.md, this roadmap and twenty-feature catalog. No implementation, deployment, node download or old-gate completion is implied by writing these documents.

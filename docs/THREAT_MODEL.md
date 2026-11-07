@@ -1,4 +1,4 @@
-# Prove threat model
+# TallyLock threat model
 
 Design review, 2026-11-05. This is a protocol threat analysis, not an implementation audit.
 

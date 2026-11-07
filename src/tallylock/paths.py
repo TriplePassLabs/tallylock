@@ -4,12 +4,12 @@ from __future__ import annotations
 import unicodedata
 
 from . import canonical
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def validate_path(path: str, *, limit: int = 1024) -> str:

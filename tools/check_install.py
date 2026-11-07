@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise an already installed Prove without importing its source checkout.
+"""Exercise an already installed TallyLock without importing its source checkout.
 
 Run inside an externally network-disabled environment for the OS-level gate.
 The per-command Python audit hook additionally rejects socket operations.
@@ -26,10 +26,10 @@ runpy.run_path(sys.argv[0], run_name='__main__')
 
 RESOURCE_PROBE = r'''
 import hashlib, importlib.metadata, importlib.resources, json, pathlib, sys
-import prove
-origin = pathlib.Path(prove.__file__).resolve()
+import tallylock
+origin = pathlib.Path(tallylock.__file__).resolve()
 assert origin.is_relative_to(pathlib.Path(sys.prefix).resolve()), origin
-package = importlib.resources.files('prove')
+package = importlib.resources.files('tallylock')
 required = ['data/schemas/protocol-v1.json', 'data/conformance/index.json',
             'data/conformance/canonical.json', 'data/conformance/trees.json',
             'data/examples/basic/manifest.json',
@@ -46,7 +46,7 @@ for case in index['cases']:
     assert relative.parts[0] == 'cases' and not relative.is_absolute()
     assert all(part not in ('', '.', '..') for part in relative.parts)
     assert package.joinpath('data/conformance', *relative.parts).read_bytes()
-print(json.dumps({'version': importlib.metadata.version('triplepass-prove'),
+print(json.dumps({'version': importlib.metadata.version('tallylock'),
                   'module': str(origin), 'cases': len(index['cases']), 'resources': digests}))
 '''
 
@@ -91,7 +91,7 @@ def main(argv=None):
     parser.add_argument("--expected-index-sha256")
     options = parser.parse_args(argv)
     interpreter = options.python.absolute()
-    console = interpreter.parent / "prove"
+    console = interpreter.parent / "tallylock"
     if not interpreter.is_file() or not console.is_file():
         raise AssertionError("installed interpreter and console entrypoint are required")
     environment = {key: value for key, value in os.environ.items()
@@ -119,7 +119,7 @@ def main(argv=None):
         version = execute([str(console), "--version"]).stdout
         assert options.expected_version in version
         assert "usage:" in execute([str(console), "--help"]).stdout.lower()
-        assert options.expected_version in execute([str(interpreter), "-I", "-m", "prove", "--version"]).stdout
+        assert options.expected_version in execute([str(interpreter), "-I", "-m", "tallylock", "--version"]).stdout
         resources = json.loads(execute([str(interpreter), "-I", "-c", RESOURCE_PROBE]).stdout)
         assert resources["version"] == options.expected_version
         if options.expected_index_sha256:

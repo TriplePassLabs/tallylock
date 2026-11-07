@@ -10,7 +10,7 @@ from bitcoin.core import CBlockHeader, b2lx
 
 from . import canonical
 from .canonical import MAX_SAFE_INTEGER
-from .errors import ProveError
+from .errors import TallyLockError
 from .schema import validate_chain
 
 
@@ -35,7 +35,7 @@ class ChainView:
     def block(self, height: int) -> CachedBlock | None:
         """Look up a checked cached header without consulting any external source."""
         if type(height) is not int or not 0 <= height <= MAX_SAFE_INTEGER:
-            raise ProveError("block height must be a nonnegative safe integer")
+            raise TallyLockError("block height must be a nonnegative safe integer")
         return self._blocks.get(height)
 
     def summary(self) -> dict:
@@ -60,7 +60,7 @@ def prepare(value: dict) -> ChainView:
         # Schema checks exact length/encoding; upstream supplies parsing and hash.
         parsed = CBlockHeader.deserialize(raw)
         if b2lx(parsed.GetHash()) != block["hash"]:
-            raise ProveError(f"cached block {height} hash differs from its header")
+            raise TallyLockError(f"cached block {height} hash differs from its header")
         blocks[height] = CachedBlock(
             height, block["hash"], raw, block["confirmations"],
             parsed.nTime, parsed.hashMerkleRoot,

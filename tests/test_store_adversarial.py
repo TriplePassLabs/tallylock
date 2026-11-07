@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from prove import canonical, filesystem, schema, store
-from prove.errors import ProveError
-from prove.filesystem import Directory
+from tallylock import canonical, filesystem, schema, store
+from tallylock.errors import TallyLockError
+from tallylock.filesystem import Directory
 
 
 def test_descendant_enoent_never_hides_unlisted_final_artifacts(tmp_path, monkeypatch):
@@ -43,7 +43,7 @@ def test_descendant_enoent_never_hides_unlisted_final_artifacts(tmp_path, monkey
         events.append({'format': 'prove.event.v1', 'registration_id': registration_id,
                        'attempt_id': 'run-1', 'index': index, 'kind': kind, **extra})
     monkeypatch.setattr(filesystem.os, 'open', disappearing_child)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         store.seal(receipt, events=events)
     assert not (receipt / 'result.json').exists()
     assert (artifacts / 'keep.txt').read_bytes() == b'keep'
@@ -61,7 +61,7 @@ def test_deep_storage_tree_never_leaks_python_recursion_error(tmp_path):
         with Directory(tmp_path) as directory:
             try:
                 assert directory.list_files() == []
-            except ProveError as error:
+            except TallyLockError as error:
                 assert error.code in (2, 5)
     finally:
         # Avoid recursive test cleanup of the deliberately deep namespace.
@@ -69,15 +69,15 @@ def test_deep_storage_tree_never_leaks_python_recursion_error(tmp_path):
             directory.rmdir()
 
 
-@pytest.mark.skipif('PROVE_ALIAS_RECEIPT' not in os.environ,
+@pytest.mark.skipif('TALLYLOCK_ALIAS_RECEIPT' not in os.environ,
                     reason='requires test-owned second bind mount worker')
 def test_bind_alias_of_receipt_descendant_is_rejected_before_staging():
-    receipt = Path(os.environ['PROVE_ALIAS_RECEIPT'])
-    source = Path('/prove-source-alias')
+    receipt = Path(os.environ['TALLYLOCK_ALIAS_RECEIPT'])
+    source = Path('/tallylock-source-alias')
     source_id, receipt_id = source.stat(), (receipt / 'artifacts').stat()
     assert (source_id.st_dev, source_id.st_ino) == (receipt_id.st_dev, receipt_id.st_ino)
     assert (source / 'input.txt').read_bytes() == b'alias regression only'
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         store.seal(receipt, source)
     assert caught.value.code == 2
     assert not (receipt / 'result.json').exists()

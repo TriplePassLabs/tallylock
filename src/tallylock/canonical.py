@@ -8,7 +8,7 @@ from typing import Any
 
 import rfc8785
 
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 MAX_JSON_BYTES = 8 * 1024 * 1024
@@ -17,7 +17,7 @@ MAX_SAFE_INTEGER = 2**53 - 1
 
 
 def _fail(message: str) -> None:
-    raise ProveError(message)
+    raise TallyLockError(message)
 
 
 def _integer(value: str) -> int:
@@ -54,7 +54,7 @@ def _validate(value: Any, depth: int = 0) -> None:
             try:
                 value.encode("utf-8")
             except UnicodeEncodeError as error:
-                raise ProveError("JSON strings must not contain surrogate code points") from error
+                raise TallyLockError("JSON strings must not contain surrogate code points") from error
         return
     if isinstance(value, list):
         for item in value:
@@ -78,12 +78,12 @@ def loads(data: bytes | str) -> Any:
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError as error:
-            raise ProveError("JSON input must be valid UTF-8") from error
+            raise TallyLockError("JSON input must be valid UTF-8") from error
     elif isinstance(data, str):
         try:
             encoded = data.encode("utf-8")
         except UnicodeEncodeError as error:
-            raise ProveError("JSON input must not contain surrogate code points") from error
+            raise TallyLockError("JSON input must not contain surrogate code points") from error
         if len(encoded) > MAX_JSON_BYTES:
             _fail("JSON input exceeds 8 MiB")
         text = data
@@ -97,10 +97,10 @@ def loads(data: bytes | str) -> Any:
             parse_constant=_constant,
             object_pairs_hook=_object,
         )
-    except ProveError:
+    except TallyLockError:
         raise
     except (RecursionError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise ProveError("invalid JSON") from error
+        raise TallyLockError("invalid JSON") from error
     _validate(value)
     return value
 
@@ -111,7 +111,7 @@ def dumps(value: Any) -> bytes:
     try:
         encoded = rfc8785.dumps(value)
     except (TypeError, ValueError, OverflowError) as error:
-        raise ProveError("value cannot be serialized as canonical JSON") from error
+        raise TallyLockError("value cannot be serialized as canonical JSON") from error
     if len(encoded) > MAX_JSON_BYTES:
         _fail("canonical JSON exceeds 8 MiB")
     return encoded

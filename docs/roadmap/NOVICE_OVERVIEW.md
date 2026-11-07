@@ -1,10 +1,10 @@
-# Prove: easy to start, your choice of trust
+# TallyLock: easy to start, your choice of trust
 
 Proposed design, not commands available in the current release.
 
-Prove keeps a plan, its output files and its declared results together in a portable receipt. It checks whether those bytes agree. Optional Bitcoin timestamp evidence helps show that a commitment existed by a block; it does not prove that someone ran an experiment honestly or at an exact time.
+TallyLock keeps a plan, its output files and its declared results together in a portable receipt. It checks whether those bytes agree. Optional Bitcoin timestamp evidence helps show that a commitment existed by a block; it does not prove that someone ran an experiment honestly or at an exact time.
 
-You should not need to download Bitcoin to use Prove.
+You should not need to download Bitcoin to use TallyLock.
 
 | Choice | Good for | Tradeoff |
 | --- | --- | --- |
@@ -13,10 +13,10 @@ You should not need to download Bitcoin to use Prove.
 | Offline only | Local integrity checks and selected saved evidence | Saved evidence cannot establish today's chain state |
 | New managed Bitcoin node, later optional feature | Users who deliberately want their own infrastructure | Large initial download, storage, electricity and maintenance; pruning reduces storage, not initial transfer |
 
-Install the small CLI using a supported package manager or Python environment. That installer chooses where the program lives. Then `prove setup` configures how you want to use it. Setup does not install Bitcoin or start a service.
+Install the small CLI using a supported package manager or Python environment. That installer chooses where the program lives. Then `tallylock setup` configures how you want to use it. Setup does not install Bitcoin or start a service.
 
 ```text
-$ prove setup
+$ tallylock setup
 How would you like to check timestamps?
   1 Public service (recommended)
   2 My existing Bitcoin Core node
@@ -30,7 +30,7 @@ Save profile "everyday"? [yes]: yes
 Saved. No network request was made.
 
 Next online check:
-  prove verify ./receipt --online --profile everyday --human
+  tallylock verify ./receipt --online --profile everyday --human
 ```
 
 Advanced path and node settings are available when wanted. Ordinary users do not have to answer a page of directory questions. Receipt files stay where you explicitly save them. Offline checks remain available without setup.

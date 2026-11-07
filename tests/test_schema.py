@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from prove import canonical
-from prove.errors import ProveError
-from prove import merkle
+from tallylock import canonical
+from tallylock.errors import TallyLockError
+from tallylock import merkle
 
 
-if importlib.util.find_spec("prove.schema") is not None:
-    from prove import schema
+if importlib.util.find_spec("tallylock.schema") is not None:
+    from tallylock import schema
 else:
     schema = None
 
@@ -97,7 +97,7 @@ def chain():
 
 
 def invalid(function, value, *args, code=2):
-    with pytest.raises(ProveError) as caught:
+    with pytest.raises(TallyLockError) as caught:
         function(value, *args)
     assert caught.value.code == code
 
@@ -458,7 +458,7 @@ def test_static_packaged_schema_is_closed_at_root_and_uses_only_local_refs():
     from jsonschema import Draft202012Validator
 
     api()
-    resource = ROOT / "src/prove/data/schemas/protocol-v1.json"
+    resource = ROOT / "src/tallylock/data/schemas/protocol-v1.json"
     document = json.loads(resource.read_text())
     Draft202012Validator.check_schema(document)
     validator = Draft202012Validator(document)

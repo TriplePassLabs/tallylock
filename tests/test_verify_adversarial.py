@@ -11,14 +11,14 @@ from opentimestamps.core.serialize import BytesSerializationContext
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 import pytest
 
-from prove import canonical, fixture, records, schema, store
-from prove.filesystem import Directory, WriterLock
+from tallylock import canonical, fixture, records, schema, store
+from tallylock.filesystem import Directory, WriterLock
 
 
 @pytest.fixture
 def verifier():
-    assert importlib.util.find_spec("prove.verify") is not None, "full verifier not implemented"
-    return importlib.import_module("prove.verify")
+    assert importlib.util.find_spec("tallylock.verify") is not None, "full verifier not implemented"
+    return importlib.import_module("tallylock.verify")
 
 
 def receipt_at(tmp_path, *, false_score=False):
@@ -115,7 +115,7 @@ def test_integrity_only_ignores_bad_proof_and_cache_without_writes(verifier, tmp
     shutil.rmtree(receipt / ".prove")
     (receipt / "proofs").mkdir()
     (receipt / "proofs" / "manifest.ots").write_bytes(b"not a timestamp")
-    from prove import chain
+    from tallylock import chain
     monkeypatch.setattr(chain, "prepare", lambda *a, **k: pytest.fail("integrity-only parsed cache"))
     monkeypatch.setattr(Directory, "atomic_write", lambda *a, **k: pytest.fail("verification wrote a file"))
     monkeypatch.setattr(WriterLock, "__enter__", lambda *a, **k: pytest.fail("verification acquired writer lock"))

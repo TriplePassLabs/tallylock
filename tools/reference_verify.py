@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent, offline consumer of the published Prove v1 materialized wire.
+"""Independent, offline consumer of the published TallyLock v1 materialized wire.
 
 Only protocol-v1.json is shared with the product. No producer code is imported.
 """
@@ -170,7 +170,7 @@ _VALIDATORS = None
 def _schema(name, value):
     global _VALIDATORS
     if _VALIDATORS is None:
-        source = Path(__file__).resolve().parents[1] / "src/prove/data/schemas/protocol-v1.json"
+        source = Path(__file__).resolve().parents[1] / "src/tallylock/data/schemas/protocol-v1.json"
         document = strict_json(source.read_bytes())
 
         def local_refs(node):

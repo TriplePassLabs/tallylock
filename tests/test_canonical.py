@@ -6,8 +6,8 @@ import hashlib
 
 import pytest
 
-from prove import canonical
-from prove.errors import ProveError
+from tallylock import canonical
+from tallylock.errors import TallyLockError
 
 
 def test_dumps_uses_rfc8785_key_order_and_digest_hashes_exact_bytes() -> None:
@@ -33,29 +33,29 @@ def test_dumps_uses_rfc8785_key_order_and_digest_hashes_exact_bytes() -> None:
     ],
 )
 def test_loads_rejects_noncanonical_or_unsafe_json(data: bytes) -> None:
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.loads(data)
 
 
 def test_dumps_rejects_float_and_surrogate() -> None:
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.dumps({"value": 1.5})
 
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.dumps({"value": "\ud800"})
 
 
 def test_loads_rejects_nesting_beyond_64_levels() -> None:
     data = ("[" * 65 + "0" + "]" * 65).encode("ascii")
 
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.loads(data)
 
 
 def test_loads_normalizes_parser_recursion_errors_to_prove_error() -> None:
     data = ("[" * 2_000 + "0" + "]" * 2_000).encode("ascii")
 
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.loads(data)
 
 
@@ -66,5 +66,5 @@ def test_safe_integer_boundaries_are_accepted(value: int) -> None:
 
 
 def test_loads_rejects_input_larger_than_8_mib() -> None:
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         canonical.loads(b" " * (8 * 1024 * 1024 + 1))

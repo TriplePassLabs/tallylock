@@ -1,6 +1,6 @@
-# Prove development checks
+# TallyLock development checks
 
-Prove is being built as a standalone CLI. The reviewed product architecture is in PLAN.md, the implementation tasks are in docs/IMPLEMENTATION_PLAN.md and the wire contract is in docs/PROTOCOL.md. No stable CLI release is available yet.
+TallyLock is being built as a standalone CLI. The reviewed product architecture is in PLAN.md, the implementation tasks are in docs/IMPLEMENTATION_PLAN.md and the wire contract is in docs/PROTOCOL.md. No stable CLI release is available yet.
 
 For contributors using an isolated development environment on Linux with Python 3.11, 3.12 or 3.13:
 

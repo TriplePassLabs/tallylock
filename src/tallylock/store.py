@@ -10,7 +10,7 @@ import secrets
 import stat
 
 from . import canonical, records, schema
-from .errors import ProveError
+from .errors import TallyLockError
 from .filesystem import Directory, WriterLock, _Descriptors, _contains_directory, _directory_names, _problem, _same
 from .paths import validate_path, validate_paths
 
@@ -26,7 +26,7 @@ _PENDING_FORMAT = "prove.pending-write.v1"
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def _optional_read(directory: Directory, path: str, *, limit: int = canonical.MAX_JSON_BYTES) -> bytes | None:
@@ -61,7 +61,7 @@ def _pending(directory: Directory) -> dict | None:
              "invalid pending publication fields")
     _require(isinstance(value["format"], str), "invalid pending publication format")
     if value["format"] != _PENDING_FORMAT:
-        raise ProveError("unsupported pending publication format", code=4)
+        raise TallyLockError("unsupported pending publication format", code=4)
     for field in ("parent", "temp", "final", "sha256", "registration_id"):
         _require(isinstance(value[field], str), f"invalid pending publication {field}")
     _require(type(value["bytes"]) is int and 0 <= value["bytes"] <= canonical.MAX_SAFE_INTEGER,
@@ -287,7 +287,7 @@ def _journal(directory: Directory, manifest: dict) -> tuple[dict, bytes, dict, b
     _require(set(value) == {"format", "stage", "registration_id", "receipt_id"}, "invalid seal journal fields")
     _require(isinstance(value["format"], str), "invalid seal journal format")
     if value["format"] != "prove.seal-journal.v1":
-        raise ProveError("unsupported seal journal format", code=4)
+        raise TallyLockError("unsupported seal journal format", code=4)
     _require(isinstance(value["stage"], str) and _TOKEN.fullmatch(value["stage"]) is not None,
              "invalid seal journal stage token")
     for field in ("registration_id", "receipt_id"):
@@ -399,13 +399,13 @@ def _stage(directory: Directory, manifest: dict, source: Directory | None, optio
         token = secrets.token_hex(16)
         try:
             directory.mkdir_exclusive(f".prove/staging/{token}")
-        except ProveError as error:
+        except TallyLockError as error:
             if isinstance(error.__cause__, OSError) and error.__cause__.errno == errno.EEXIST:
                 continue
             raise
         break
     else:
-        raise ProveError("cannot allocate exclusive snapshot stage", code=5)
+        raise TallyLockError("cannot allocate exclusive snapshot stage", code=5)
     prefix = f".prove/staging/{token}"
     directory.mkdir_exclusive(f"{prefix}/artifacts")
     inventory = {}

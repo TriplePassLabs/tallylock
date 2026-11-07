@@ -1,4 +1,4 @@
-# Prove acceptance matrix
+# TallyLock acceptance matrix
 
 Planned checks, not test results. Each row must become an executable test or a recorded integration procedure. G1 and G2 are separate acceptance gates.
 
@@ -30,7 +30,7 @@ Planned checks, not test results. Each row must become an executable test or a r
 | T06 | G2 | Proof upgrade changes proof data but not core digests or receipt ID; interruption preserves a usable prior proof |
 | T07 | G2 | Fresh real plan anchor completes before the fixture's locally enforced launch; separate result anchor completes after finalization; audit records are preserved without claiming independent chronology |
 | T08 | G2 | Clean offline verifier, with separately acquired chain evidence, checks the fresh receipt; mock-only or historical-only evidence cannot pass this milestone |
-| T09 | G2 | Standard upstream OTS tooling checks the core-file proofs, and Prove reports the same anchor hashes against the same chain view |
+| T09 | G2 | Standard upstream OTS tooling checks the core-file proofs, and TallyLock reports the same anchor hashes against the same chain view |
 | U01 | G3 | Import one pinned existing-harness log with retries and failures; raw log hash preserved and mapping report accounts for every record, explicitly reporting unsupported semantics |
 | U02 | G3 | Two unfamiliar users can verify a real pilot and correctly explain that timestamps do not prove model identity, honest execution or no hidden attempts |
 | U03 | G3 | Pinned exported Inspect JSON is parsed only as data; task/plugin paths, attachment URLs and malformed references cannot trigger execution, reads outside the input or network fetches |
@@ -42,4 +42,4 @@ Planned checks, not test results. Each row must become an executable test or a r
 
 Performance claims require separate measured reports with CPU, OS, versions, sizes, sample counts and distribution of elapsed times. Measure hashing a whole run separately from verifying a single membership path. No universal millisecond claim is an acceptance requirement.
 
-Observed core conformance evidence: C01/C03/C16 are exercised by tests/test_conformance.py, tests/test_reference_verify.py and main-owned tests/test_reference_adversarial.py against fixed packaged data under src/prove/data/conformance/. The independent tool shares the published wire schema and SHA256 primitive, but no production canonicalization, tree, record or scoring functions. Its authoring worksheet uses a separate tree construction. Final corpus:103 cases,94 production comparisons, four canonical vectors and eight tree sizes with all35 paths. Main's final affected run passed142 checks in22.15s after two scoped repair rounds and independent approval. This covers materialized bytes and declared overlap, not production filesystem races, installed CLI behavior, Bitcoin provenance or the fresh-anchor gates.
+Observed core conformance evidence: C01/C03/C16 are exercised by tests/test_conformance.py, tests/test_reference_verify.py and main-owned tests/test_reference_adversarial.py against fixed packaged data under src/tallylock/data/conformance/. The independent tool shares the published wire schema and SHA256 primitive, but no production canonicalization, tree, record or scoring functions. Its authoring worksheet uses a separate tree construction. Final corpus:103 cases,94 production comparisons, four canonical vectors and eight tree sizes with all35 paths. Main's final affected run passed142 checks in22.15s after two scoped repair rounds and independent approval. This covers materialized bytes and declared overlap, not production filesystem races, installed CLI behavior, Bitcoin provenance or the fresh-anchor gates.

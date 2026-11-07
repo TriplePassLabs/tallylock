@@ -1,7 +1,7 @@
 """Offline corpus authoring worksheet, never imported by conformance tests.
 
 Explicit regeneration: python -m pytest tests/reference_corpus_author.py -q
-This writes reviewed source assets. It imports neither Prove nor the reference.
+This writes reviewed source assets. It imports neither TallyLock nor the reference.
 Wire fixtures use stdlib JSON with ASCII/BMP keys. Trees use a bottom-up node stack,
 independently from the reference verifier's recursive split implementation.
 """
@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 
-DEST = Path(__file__).resolve().parents[1] / "src/prove/data/conformance"
+DEST = Path(__file__).resolve().parents[1] / "src/tallylock/data/conformance"
 FIELDS = ("input_tokens", "output_tokens", "reasoning_tokens", "cached_tokens", "duration_ms")
 
 

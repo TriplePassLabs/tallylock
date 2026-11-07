@@ -11,14 +11,14 @@ from opentimestamps.core.op import OpAppend, OpSHA256
 from opentimestamps.core.serialize import BytesDeserializationContext
 from opentimestamps.core.timestamp import DetachedTimestampFile
 
-from prove import canonical, store
-from prove.errors import ProveError
+from tallylock import canonical, store
+from tallylock.errors import TallyLockError
 from test_transport import ORIGIN, reply, attested_reply
 
 
 def api():
-    assert importlib.util.find_spec("prove.timestamping") is not None, "durable timestamping missing"
-    from prove import timestamping
+    assert importlib.util.find_spec("tallylock.timestamping") is not None, "durable timestamping missing"
+    from tallylock import timestamping
     return timestamping
 
 
@@ -65,9 +65,9 @@ def test_failed_submit_nonce_resumes_after_cooldown(receipt, monkeypatch):
     calls = []
     def failure(origin, commitment, **kwargs):
         calls.append(commitment)
-        raise ProveError("synthetic failure", code=5)
+        raise TallyLockError("synthetic failure", code=5)
     monkeypatch.setattr(client.transport, "submit", failure)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(receipt, targets=("manifest",))
     assert error.value.code == 5
     frozen = (receipt/".prove/ots-state.json").read_bytes()
@@ -88,7 +88,7 @@ def test_malformed_selected_core_blocks_every_request(receipt, monkeypatch):
     client = api()
     (receipt/"result.json").write_bytes((receipt/"result.json").read_bytes()+b"\n")
     monkeypatch.setattr(client.transport, "submit", lambda *a, **k: pytest.fail("unexpected request"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(receipt)
     assert error.value.code == 2
 
@@ -147,13 +147,13 @@ def test_partial_target_success_preserved_when_other_target_fails(receipt, monke
         state = canonical.loads((receipt/".prove/ots-state.json").read_bytes())
         target = state["requests"][-1]["target"]
         if target == "result":
-            raise ProveError("failed", code=5)
+            raise TallyLockError("failed", code=5)
         return reply(commitment, origin)
     monkeypatch.setattr(client.transport, "submit", submit)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(receipt)
     assert error.value.code == 5
-    from prove import anchors
+    from tallylock import anchors
     assert anchors.inspect((receipt/"proofs/manifest.ots").read_bytes(), expected)["pending_count"] == 4
     assert not (receipt/"proofs/result.ots").exists()
 
@@ -174,7 +174,7 @@ def test_untrusted_state_rejected_before_request(receipt, monkeypatch, attack):
     elif attack == "bool": state["requests"][0]["attempted_at"] = True
     path.write_bytes(canonical.dumps(state))
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: pytest.fail("unexpected request"))
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         client.upgrade(receipt, targets=("manifest",))
 
 
@@ -182,9 +182,9 @@ def test_request_budget_round_robin_and_shared_fair_deadlines(receipt, monkeypat
     client = api()
     monkeypatch.setattr(client.time, "time", lambda: 1000)
     def fail(*args, **kwargs):
-        raise ProveError("synthetic failure", code=5)
+        raise TallyLockError("synthetic failure", code=5)
     monkeypatch.setattr(client.transport, "submit", fail)
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         client.submit(receipt, targets=("result",))
     monkeypatch.setattr(client.time, "time", lambda: 1301)
     origins = tuple(f"https://n{i}.calendar.opentimestamps.org" for i in range(12))
@@ -210,7 +210,7 @@ def test_request_budget_round_robin_and_shared_fair_deadlines(receipt, monkeypat
 @pytest.mark.parametrize("point", ["reservation", "backup", "replace", "persist"])
 def test_interrupted_publication_preserves_previous_and_resumes(receipt, monkeypatch, point):
     client = api()
-    from prove.filesystem import Directory
+    from tallylock.filesystem import Directory
     old = import_proof(receipt)
     write, persist = Directory.atomic_write, Directory.persist_file
     fired = False
@@ -220,18 +220,18 @@ def test_interrupted_publication_preserves_previous_and_resumes(receipt, monkeyp
                 or (point == "backup" and path.startswith(".prove/proof-history/"))
                 or (point == "replace" and path == "proofs/manifest.ots")):
             fired = True
-            raise ProveError("synthetic interrupted publication", code=5)
+            raise TallyLockError("synthetic interrupted publication", code=5)
         return write(self, path, data, replace=replace)
     def interrupted_persist(self, path):
         nonlocal fired
         if not fired and point == "persist" and path == "proofs/manifest.ots":
             fired = True
-            raise ProveError("synthetic interrupted fsync", code=5)
+            raise TallyLockError("synthetic interrupted fsync", code=5)
         return persist(self, path)
     monkeypatch.setattr(Directory, "atomic_write", interrupted_write)
     monkeypatch.setattr(Directory, "persist_file", interrupted_persist)
     monkeypatch.setattr(client.transport, "upgrade", lambda origin, commitment, **k: reply(commitment, "https://b.pool.opentimestamps.org"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 5 and fired
     if point != "persist":
@@ -252,7 +252,7 @@ def test_core_mutation_during_network_rejected_before_proof_publication(receipt,
         (receipt/"manifest.json").write_bytes(b"substituted")
         return reply(args[1], args[0])
     monkeypatch.setattr(client.transport, "submit", submit)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(receipt, targets=("manifest",))
     assert error.value.code == 2
     assert not (receipt/"proofs/manifest.ots").exists()
@@ -260,11 +260,11 @@ def test_core_mutation_during_network_rejected_before_proof_publication(receipt,
 
 def test_one_writer_lock_and_no_unsafe_proof_authority(receipt, monkeypatch):
     client = api()
-    from prove.filesystem import Directory, WriterLock
+    from tallylock.filesystem import Directory, WriterLock
     import_proof(receipt, origins=("https://evil.invalid",))
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: pytest.fail("unexpected request"))
     with Directory(receipt) as directory, WriterLock(directory):
-        with pytest.raises(ProveError) as error:
+        with pytest.raises(TallyLockError) as error:
             client.upgrade(receipt, targets=("manifest",))
         assert error.value.code == 5
     report = client.upgrade(receipt, targets=("manifest",))
@@ -275,7 +275,7 @@ def test_malformed_reply_preserves_imported_bytes(receipt, monkeypatch):
     client = api()
     old = import_proof(receipt)
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: b"bad reply")
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 5
     assert (receipt/"proofs/manifest.ots").read_bytes() == old
@@ -303,7 +303,7 @@ def test_merged_byte_limit_enforced_during_serialization(receipt, monkeypatch):
     old = import_proof(receipt)
     monkeypatch.setattr(client.anchors, "MAX_PROOF_BYTES", len(old)+1)
     monkeypatch.setattr(client.transport, "upgrade", lambda origin, commitment, **k: reply(commitment, "https://b.pool.opentimestamps.org"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 5
     assert (receipt/"proofs/manifest.ots").read_bytes() == old
@@ -315,7 +315,7 @@ def test_serialization_stops_at_byte_limit_before_inspection(receipt, monkeypatc
     stamp = Timestamp(b"a"*32)
     stamp.attestations.add(PendingAttestation(ORIGIN))
     monkeypatch.setattr(client.anchors, "MAX_PROOF_BYTES", 20)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client._encode(stamp)
     assert error.value.code == 5
 
@@ -324,7 +324,7 @@ def test_fresh_upgrade_requires_proof_or_saved_nonce(receipt, monkeypatch):
     client = api()
     monkeypatch.setattr(client.transport, "submit", lambda *a, **k: pytest.fail("unexpected submission"))
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: pytest.fail("unexpected upgrade"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 3
     assert not (receipt/".prove/ots-state.json").exists()
@@ -336,7 +336,7 @@ def test_imported_unknown_nonce_without_proof_is_insufficient(receipt, monkeypat
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: None)
     client.upgrade(receipt, targets=("manifest",))
     (receipt/"proofs/manifest.ots").unlink()
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 3
 
@@ -348,7 +348,7 @@ def test_conflicting_history_never_clobbered_and_old_proof_preserved(receipt, mo
     history.parent.mkdir(parents=True)
     history.write_bytes(b"conflicting existing history")
     monkeypatch.setattr(client.transport, "upgrade", lambda origin, commitment, **k: reply(commitment, "https://b.pool.opentimestamps.org"))
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         client.upgrade(receipt, targets=("manifest",))
     assert history.read_bytes() == b"conflicting existing history"
     assert (receipt/"proofs/manifest.ots").read_bytes() == old
@@ -372,7 +372,7 @@ def test_reply_with_valid_own_depth_but_excessive_merged_depth_preserves_old(rec
         context = BytesSerializationContext(); addition.serialize(context)
         return context.getbytes()
     monkeypatch.setattr(client.transport, "upgrade", upgrade)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 5
     assert (receipt/"proofs/manifest.ots").read_bytes() == old
@@ -383,7 +383,7 @@ def test_unsupported_only_upgrade_reply_preserves_supported_previous(receipt, mo
     client = api()
     old = import_proof(receipt)
     monkeypatch.setattr(client.transport, "upgrade", lambda origin, commitment, **k: attested_reply(commitment, attestation))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == 5
     assert (receipt/"proofs/manifest.ots").read_bytes() == old
@@ -402,7 +402,7 @@ def test_imported_unsupported_only_proof_is_unsupported_before_io(receipt, monke
     monkeypatch.setattr(client.transport, "submit", lambda *a, **k: pytest.fail("unexpected request"))
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: pytest.fail("unexpected request"))
     for action in (client.submit, client.upgrade):
-        with pytest.raises(ProveError) as error:
+        with pytest.raises(TallyLockError) as error:
             action(receipt, targets=("manifest",))
         assert error.value.code == 4
         assert path.read_bytes() == old
@@ -412,7 +412,7 @@ def test_unsupported_only_submission_fails_without_publishing_fake_pending(recei
     client = api()
     monkeypatch.setattr(client.transport, "submit", lambda origin, commitment, **k:
         attested_reply(commitment, LitecoinBlockHeaderAttestation(1)))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.submit(receipt, targets=("manifest",))
     assert error.value.code == 5
     assert not (receipt/"proofs/manifest.ots").exists()
@@ -420,7 +420,7 @@ def test_unsupported_only_submission_fails_without_publishing_fake_pending(recei
 
 def test_unsupported_calendar_failure_preserves_other_supported_successes(receipt, monkeypatch):
     client = api()
-    from prove import anchors
+    from tallylock import anchors
     calls = []
     def submit(origin, commitment, **kwargs):
         calls.append(origin)
@@ -439,7 +439,7 @@ def test_unsupported_calendar_failure_preserves_other_supported_successes(receip
 @pytest.mark.parametrize("supported", [PendingAttestation(ORIGIN), BitcoinBlockHeaderAttestation(11)])
 def test_mixed_supported_and_opaque_reply_preserves_extras_unverified(receipt, monkeypatch, supported):
     client = api()
-    from prove import anchors
+    from tallylock import anchors
     monkeypatch.setattr(client.transport, "submit", lambda origin, commitment, **k:
         attested_reply(commitment, supported, UnknownAttestation(b"unknown!", b"opaque")))
     report = client.submit(receipt, targets=("manifest",))
@@ -499,7 +499,7 @@ def test_state_format_distinguishes_malformed_from_unsupported(receipt, monkeypa
     malformed = canonical.dumps(state)
     path.write_bytes(malformed)
     monkeypatch.setattr(client.transport, "upgrade", lambda *a, **k: pytest.fail("unexpected request"))
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.upgrade(receipt, targets=("manifest",))
     assert error.value.code == code
     assert path.read_bytes() == malformed

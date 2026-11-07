@@ -1,7 +1,7 @@
 import pytest
 
-from prove import fixture, schema, scoring, store
-from prove.errors import ProveError
+from tallylock import fixture, schema, scoring, store
+from tallylock.errors import TallyLockError
 
 
 def test_example_is_fresh_pure_fixture_with_two_samples_and_no_calls():
@@ -37,7 +37,7 @@ def test_fixture_seals_through_store_and_recomputes_from_local_artifacts(tmp_pat
 
 
 def test_store_can_seal_honestly_hashed_false_fixture_math_that_scoring_rejects(tmp_path):
-    from prove import canonical
+    from tallylock import canonical
     value = fixture.example()
     score = canonical.loads(value.artifacts[value.score_path])
     score["samples"][0]["observed"] = "green"
@@ -51,5 +51,5 @@ def test_store_can_seal_honestly_hashed_false_fixture_math_that_scoring_rejects(
     result = store.seal(receipt, source, events=value.events, roles=value.roles,
                         score_path=value.score_path, aggregate=value.aggregate)
 
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         scoring.check(value.manifest, result, lambda path, limit: (receipt / "artifacts" / path).read_bytes())

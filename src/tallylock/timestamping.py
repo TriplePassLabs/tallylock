@@ -16,7 +16,7 @@ from opentimestamps.core.serialize import StreamSerializationContext
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 
 from . import anchors, canonical, schema, store, transport
-from .errors import ProveError
+from .errors import TallyLockError
 from .filesystem import Directory, WriterLock
 
 
@@ -29,14 +29,14 @@ _NONCE = re.compile(r"[0-9a-f]{32}\Z")
 
 def _require(condition, message):
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def _encode(stamp):
     class BoundedOutput(io.BytesIO):
         def write(self, data):
             if self.tell() + len(data) > anchors.MAX_PROOF_BYTES:
-                raise ProveError("merged proof exceeds its byte limit", code=5)
+                raise TallyLockError("merged proof exceeds its byte limit", code=5)
             return super().write(data)
 
     items = 0
@@ -45,7 +45,7 @@ def _encode(stamp):
         node, depth = stack.pop()
         items += 1 + len(node.attestations)
         if depth > anchors.MAX_TIMESTAMP_DEPTH or items > anchors.MAX_TIMESTAMP_ITEMS:
-            raise ProveError("merged proof exceeds its structural limits", code=5)
+            raise TallyLockError("merged proof exceeds its structural limits", code=5)
         stack.extend((child, depth+1) for child in node.ops.values())
     output = BoundedOutput()
     context = StreamSerializationContext(output)
@@ -60,7 +60,7 @@ def _cores(directory, targets):
     schema.validate_manifest(manifest)
     result_data = store._optional_read(directory, "result.json")
     if "result" in targets and result_data is None:
-        raise ProveError("selected result is absent", code=3)
+        raise TallyLockError("selected result is absent", code=3)
     if result_data is not None:
         result = store._canonical_object(result_data, "result")
         schema.validate_result(result, manifest)
@@ -91,7 +91,7 @@ def _load_state(directory, ids):
              "invalid timestamp state fields")
     _require(isinstance(state["format"], str), "invalid timestamp state format")
     if state["format"] != "prove.ots-state.v1":
-        raise ProveError("unsupported timestamp state format", code=4)
+        raise TallyLockError("unsupported timestamp state format", code=4)
     _require(state["registration_id"] == ids["manifest"]
              and (state["receipt_id"] is None or state["receipt_id"] == ids.get("result")),
              "timestamp state core IDs differ")
@@ -167,7 +167,7 @@ def _jobs(name, proof, nonce, core_id, action, warnings):
                 continue
             try:
                 origin = transport.normalize_origin(attestation.uri, upgrade=True)
-            except ProveError:
+            except TallyLockError:
                 if len(warnings) < 16:
                     warnings.append("ignored an unapproved pending calendar authority")
                 continue
@@ -183,19 +183,19 @@ def _merge(old, core_id, nonce, commitment, response):
         addition = anchors.parse_timestamp(response, commitment)
         bitcoin, _, pending, _ = anchors._evidence(addition)
         if not bitcoin and not pending:
-            raise ProveError("calendar timestamp has no supported witness")
+            raise TallyLockError("calendar timestamp has no supported witness")
         stamp = anchors._load(old, core_id) if old is not None else _fresh_stamp(core_id, nonce)[0]
         matching = [node for node in _nodes(stamp) if node.msg == commitment]
         if not matching:
-            raise ProveError("calendar commitment is absent from the existing proof")
+            raise TallyLockError("calendar commitment is absent from the existing proof")
         # One correctly bound path suffices; duplicating the reply into every
         # equivalent message can multiply an untrusted tree unnecessarily.
         matching[0].merge(addition)
         data = _encode(stamp)
         anchors.inspect(data, core_id)
         return data
-    except (ProveError, ValueError, RecursionError):
-        raise ProveError("calendar proof merge failed validation", code=5) from None
+    except (TallyLockError, ValueError, RecursionError):
+        raise TallyLockError("calendar proof merge failed validation", code=5) from None
 
 
 def _publish(directory, name, old, data, frozen):
@@ -231,13 +231,13 @@ def _action(receipt, targets, action):
                 if proof is not None:
                     info = anchors.inspect(proof, ids[name])
                     if not info["bitcoin_heights"] and not info["pending_count"]:
-                        raise ProveError("existing proof has no supported Bitcoin or pending witness", code=4)
+                        raise TallyLockError("existing proof has no supported Bitcoin or pending witness", code=4)
                 proofs[name] = proof
             state, previous = _load_state(directory, ids)
             for name in targets:
                 saved = state["targets"].get(name)
                 if action == "upgrade" and proofs[name] is None and (saved is None or saved["nonce"] is None):
-                    raise ProveError("upgrade requires an existing proof or saved submission nonce", code=3)
+                    raise TallyLockError("upgrade requires an existing proof or saved submission nonce", code=3)
                 if name not in state["targets"]:
                     state["targets"][name] = {"sha256": ids[name],
                         "nonce": secrets.token_hex(16) if proofs[name] is None else None}
@@ -306,7 +306,7 @@ def _action(receipt, targets, action):
                     previous = _save_state(directory, state, previous, frozen)
                     deferred[name].append(reservation["next_retry_at"])
                     continue
-                except ProveError as error:
+                except TallyLockError as error:
                     _check_cores(directory, frozen)
                     if error.code != 5:
                         raise
@@ -320,7 +320,7 @@ def _action(receipt, targets, action):
                         candidate = _merge(proofs[name], ids[name], state["targets"][name]["nonce"], commitment, response)
                     else:
                         candidate = proofs[name]
-                except ProveError as error:
+                except TallyLockError as error:
                     if error.code != 5:
                         raise
                     failures[name] += 1
@@ -342,7 +342,7 @@ def _action(receipt, targets, action):
                 else:
                     info = {"bitcoin_heights": [], "pending_count": 0}
                 if attempts[name] and failures[name] == attempts[name] and not successes[name]:
-                    raise ProveError("all due calendar requests failed for a selected target", code=5)
+                    raise TallyLockError("all due calendar requests failed for a selected target", code=5)
                 if deferred[name] and not successes[name]:
                     status = "retry_wait"
                 elif changed[name]:
@@ -351,7 +351,7 @@ def _action(receipt, targets, action):
                     status = "unchanged"
                 else:
                     # No unattested intermediate timestamp is ever a proof.
-                    raise ProveError("calendar action produced no proof", code=5)
+                    raise TallyLockError("calendar action produced no proof", code=5)
                 reports[name] = {"state": status,
                     "proof_sha256": hashlib.sha256(data).hexdigest() if data is not None else None,
                     "proof_bytes": len(data) if data is not None else 0,

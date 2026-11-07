@@ -10,12 +10,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from prove.errors import ProveError
+from tallylock.errors import TallyLockError
 
 
 def api():
-    assert importlib.util.find_spec("prove._http") is not None, "bounded HTTP boundary missing"
-    from prove import _http
+    assert importlib.util.find_spec("tallylock._http") is not None, "bounded HTTP boundary missing"
+    from tallylock import _http
     return _http
 
 
@@ -99,7 +99,7 @@ def server():
 def test_absolute_deadline_and_no_request_child_after_return(server, path, request_children):
     client = api()
     start = time.monotonic()
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.request("GET", server + path, body=None, headers={"Authorization": "synthetic-secret"},
                        response_limit=100, timeout_seconds=5, deadline=start + .6)
     assert error.value.code == 5
@@ -107,14 +107,14 @@ def test_absolute_deadline_and_no_request_child_after_return(server, path, reque
     assert server.seen[path].is_set()
     assert time.monotonic() - start < 1.5
     assert request_children and all(child.returncode is not None for child in request_children)
-    assert all(child.args == [sys.executable, "-I", "-m", "prove._http"] for child in request_children)
+    assert all(child.args == [sys.executable, "-I", "-m", "tallylock._http"] for child in request_children)
 
 
 def test_response_limit_and_redirect_not_followed(server):
     client = api()
     response = client.request("GET", server + "/redirect", body=None, headers={}, response_limit=100)
     assert response.status == 302
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.request("GET", server, body=None, headers={}, response_limit=3)
     assert error.value.code == 5
 
@@ -137,7 +137,7 @@ def test_tls_handshake_stall_is_bounded_and_child_reaped(request_children):
     thread.start()
     start = time.monotonic()
     try:
-        with pytest.raises(ProveError) as error:
+        with pytest.raises(TallyLockError) as error:
             client.request("GET", f"https://127.0.0.1:{listener.getsockname()[1]}", body=None,
                 headers={}, response_limit=100, deadline=start+.6)
         assert error.value.code == 5 and accepted.is_set()
@@ -150,7 +150,7 @@ def test_tls_handshake_stall_is_bounded_and_child_reaped(request_children):
 
 def test_interrupt_cleanup_and_preexpired_deadline(server, monkeypatch, request_children):
     client = api()
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         client.request("GET", server, body=None, headers={}, response_limit=100, deadline=time.monotonic()-1)
     def interrupt(*args):
         raise KeyboardInterrupt()
@@ -163,7 +163,7 @@ def test_interrupt_cleanup_and_preexpired_deadline(server, monkeypatch, request_
 @pytest.mark.parametrize("path", ["/truncated", "/bad-length", "/conflicting-length"])
 def test_malformed_http_framing_is_operational(server, path):
     client = api()
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.request("GET", server+path, body=None, headers={}, response_limit=1000)
     assert error.value.code == 5
 
@@ -171,7 +171,7 @@ def test_malformed_http_framing_is_operational(server, path):
 @pytest.mark.parametrize("mode", ["stdin", "-c"])
 def test_api_works_from_unguarded_python_entry_points(server, mode):
     code = (
-        "from prove import _http\n"
+        "from tallylock import _http\n"
         "import sys\n"
         "response = _http.request('GET', sys.argv[1]+'/dribble', body=None, headers={}, "
         "response_limit=100, timeout_seconds=3)\n"
@@ -190,9 +190,9 @@ def test_bounded_request_ipc_transfers_body_without_credentials_in_argv(server, 
     response = client.request("POST", server, body=data, headers={"Authorization": "synthetic-secret"},
                               response_limit=len(data), timeout_seconds=3)
     assert response.status == 200 and response.body == data
-    assert request_children[0].args == [sys.executable, "-I", "-m", "prove._http"]
+    assert request_children[0].args == [sys.executable, "-I", "-m", "tallylock._http"]
     calls = len(request_children)
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         client.request("POST", server, body=b"a"*(1024*1024+1), headers={}, response_limit=1)
     assert error.value.code == 5 and len(request_children) == calls
 
@@ -211,7 +211,7 @@ def test_remote_disconnect_is_a_retryable_network_failure(server):
 
 @pytest.mark.parametrize("status", [429, 503])
 def test_large_discarded_error_page_preserves_typed_retry_after(server, monkeypatch, status):
-    from prove import transport
+    from tallylock import transport
     client = api()
     actual_request = client.request
     def loopback_request(method, url, **kwargs):
@@ -269,7 +269,7 @@ def test_close_after_release_drains_all_cleanup_preserving_primary(server, monke
             elif mode == "deadline":
                 assert isinstance(error.value, client.NetworkError)
             else:
-                assert isinstance(error.value, ProveError) and error.value.code == 5
+                assert isinstance(error.value, TallyLockError) and error.value.code == 5
         assert children and all(child.returncode is not None for child in children)
         assert all(stream.closed and stream.calls == 1 for stream in streams)
         if mode != "success":

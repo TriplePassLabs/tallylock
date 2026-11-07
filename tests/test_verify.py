@@ -15,14 +15,14 @@ from opentimestamps.core.serialize import BytesSerializationContext
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 import pytest
 
-from prove import canonical, fixture, filesystem, records, schema
-from prove.errors import ProveError
+from tallylock import canonical, fixture, filesystem, records, schema
+from tallylock.errors import TallyLockError
 from test_chain import cache_for
 
 
 def api():
-    assert importlib.util.find_spec('prove.verify') is not None, 'Task5a verifier module absent'
-    return importlib.import_module('prove.verify')
+    assert importlib.util.find_spec('tallylock.verify') is not None, 'Task5a verifier module absent'
+    return importlib.import_module('tallylock.verify')
 
 
 def receipt(tmp_path, *, generic=False, empty=False):
@@ -116,7 +116,7 @@ def test_generic_and_unsuccessful_empty_receipts(tmp_path, generic, empty):
     assert report.code == 0 and report.report['record_integrity']['state'] == 'checked'
     if empty:
         assert report.report['record_integrity']['count'] == 0
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             api().make_inclusion(tmp_path, 0)
 
 
@@ -175,8 +175,8 @@ def test_make_and_verify_inclusion_scope_odd_tree_and_strict_bytes(tmp_path):
         proof['siblings'].append('00' * 32)
         assert api().inclusion(proof, policy='integrity-only').code == 2
     for index in (True, -1, 5):
-        with pytest.raises(ProveError): api().make_inclusion(tmp_path, index)
-    with pytest.raises(ProveError): api().make_inclusion(tmp_path / 'absent', 0, include_proofs=1)
+        with pytest.raises(TallyLockError): api().make_inclusion(tmp_path, index)
+    with pytest.raises(TallyLockError): api().make_inclusion(tmp_path / 'absent', 0, include_proofs=1)
 
 
 def test_completed_anchors_explicit_cache_thresholds_and_bounded_summary(tmp_path):
@@ -205,7 +205,7 @@ def test_malformed_proofs_still_parsed_without_cache_and_integrity_policy_skips(
     assert api().full(tmp_path, policy='integrity-only').code == 0
     proof = api().make_inclusion(tmp_path, 0, include_proofs=False)
     assert proof['proofs'] == {'manifest': None, 'result': None}
-    with pytest.raises(ProveError): api().make_inclusion(tmp_path, 0)
+    with pytest.raises(TallyLockError): api().make_inclusion(tmp_path, 0)
     proof['proofs']['manifest'] = 'not base64!'
     assert api().inclusion(proof, policy='integrity-only').code == 2
 
@@ -216,9 +216,9 @@ def test_expected_bytes_rejects_sparse_size_before_reads(tmp_path, monkeypatch):
     def trap(*args): raise AssertionError('size mismatch must not read')
     with filesystem.Directory(tmp_path) as directory:
         monkeypatch.setattr(os, 'read', trap)
-        with pytest.raises(ProveError): directory.digest('sparse', expected_bytes=2)
+        with pytest.raises(TallyLockError): directory.digest('sparse', expected_bytes=2)
         for expected in (True, -1, 2**53, 1.0):
-            with pytest.raises(ProveError): directory.digest('sparse', expected_bytes=expected)
+            with pytest.raises(TallyLockError): directory.digest('sparse', expected_bytes=expected)
 
 
 def package_for(manifest, result, event, siblings=None):
@@ -229,7 +229,7 @@ def package_for(manifest, result, event, siblings=None):
 
 
 def test_inclusion_rejects_nonterminal_at_known_final_position(tmp_path):
-    from prove import merkle
+    from tallylock import merkle
     manifest, result = receipt(tmp_path)
     event = {'format': 'prove.event.v1', 'registration_id': canonical.digest(manifest), 'attempt_id': 'run-1',
              'index': 0, 'kind': 'sample_start', 'sample_id': 'sample-1'}
@@ -246,7 +246,7 @@ def test_artifact_checks_collect_later_invalidity_after_read_failure(tmp_path, m
     def digest(self, path, **kwargs):
         calls.append(path)
         if path.endswith('dataset.json'):
-            raise ProveError('synthetic read failure', code=5)
+            raise TallyLockError('synthetic read failure', code=5)
         if path.endswith('scores.json'):
             return '0' * 64, kwargs['expected_bytes']
         return original(self, path, **kwargs)
@@ -273,7 +273,7 @@ def test_error_cap_keeps_severity_after_thirty_two_presented_errors(tmp_path, mo
     calls = []
     def digest(self, path, **kwargs):
         calls.append(path)
-        raise ProveError('synthetic read failure: sensitive arbitrary payload must not appear', code=2 if path.endswith('39.bin') else 5)
+        raise TallyLockError('synthetic read failure: sensitive arbitrary payload must not appear', code=2 if path.endswith('39.bin') else 5)
     monkeypatch.setattr(filesystem.Directory, 'digest', digest)
     output = api().full(tmp_path, policy='integrity-only')
     assert output.code == 2 and len(calls) == 40 and len(output.report['errors']) == 32
@@ -332,7 +332,7 @@ def test_full_detects_actual_descriptor_read_races(tmp_path, monkeypatch, change
 
 
 def test_full_rechecks_canonical_core_bytes_after_other_checks(tmp_path, monkeypatch):
-    from prove import scoring
+    from tallylock import scoring
     receipt(tmp_path, generic=True)
     original = scoring.check
     def score(*args, **kwargs):
@@ -347,7 +347,7 @@ def test_full_rechecks_canonical_core_bytes_after_other_checks(tmp_path, monkeyp
 
 
 def test_honestly_rehashed_budget_excess_cannot_claim_completed(tmp_path):
-    from prove import merkle
+    from tallylock import merkle
     manifest, result = receipt(tmp_path)
     events = records.decode((tmp_path / 'records.jsonl').read_bytes())
     call = {'format': 'prove.event.v1', 'registration_id': canonical.digest(manifest), 'attempt_id': 'run-1',
@@ -421,7 +421,7 @@ def test_programming_errors_and_base_exceptions_propagate(tmp_path, monkeypatch)
 
 def trace_package(kinds, index, *, calls=0, samples=1, outcome='failed', other_samples=0):
     """Commit exact synthetic records, including deliberately impossible histories."""
-    from prove import merkle
+    from tallylock import merkle
     manifest = schema.default_manifest('Synthetic trace slot bounds')
     manifest['profile'] = 'trace-v1'
     selected = [f'sample-{number + 1}' for number in range(samples)]
@@ -517,6 +517,6 @@ def test_inclusion_slot_bounds_do_not_assert_unseen_call_history():
     package, data = trace_package(['start', 'end', 'terminal'], 2, calls=1)
     # The visible terminal and declarations allow an unseen call in the middle.
     # This actual full log contains an end instead, which membership cannot reveal.
-    with pytest.raises(ProveError): records.check(package['manifest'], package['result'], data)
+    with pytest.raises(TallyLockError): records.check(package['manifest'], package['result'], data)
     output = api().inclusion(package, policy='integrity-only')
     assert output.code == 0 and output.report['resources']['state'] == 'not_checked'

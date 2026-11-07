@@ -19,7 +19,7 @@ read these files; they never generate cases or expected values with production c
   JSON bytes. Artifact and core bytes use canonical base64.
 
 Authorship and independence: `tests/reference_corpus_author.py` is the retained
-offline authoring worksheet. It imports neither Prove nor the reference tool.
+offline authoring worksheet. It imports neither TallyLock nor the reference tool.
 Its wire fixture keys are ASCII/BMP, where stdlib key ordering agrees with UTF16.
 Canonical-vector containers are ordinary JSON with handwritten expected JCS bytes.
 Its tree builder merges equal-sized completed subtrees on a bottom-up
@@ -37,7 +37,7 @@ python -m pytest tests/reference_corpus_author.py -q
 
 This is an authoring operation that writes source assets. Ordinary tests never
 import or invoke it. Review both the new bytes and the resulting fixed index.
-See the [source-checkout runbook](https://github.com/TriplePassLabs/prove/blob/build/integration-candidate/RUNBOOK.md)
+See the [source-checkout runbook](https://github.com/TriplePassLabs/tallylock/blob/build/integration-candidate/RUNBOOK.md)
 for isolated environment guidance.
 Math, lifecycle, resource and budget counterexamples rebind their record bytes,
 digest, length, root and IDs. The genuinely valid membership paths on impossible
@@ -52,7 +52,7 @@ Inclusions compare membership scope only, and leave artifact availability, full
 history, coverage, actual totals, budgets and score math unchecked.
 
 The subprocess tests run Python isolated from project import paths and explicitly
-deny imports of `prove` and `rfc8785`, including transitive imports. They also trap
+deny imports of `tallylock` and `rfc8785`, including transitive imports. They also trap
 Python socket connections. Installed-CLI process-level blocked-network acceptance
 belongs to Task 7; this is not that gate. No filesystem race, chain authentication,
 hidden-attempt completeness or executed-model claim follows from this corpus.

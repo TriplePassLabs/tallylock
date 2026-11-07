@@ -83,7 +83,7 @@ def test_cli_size_limit_depth_and_conventional_help(tmp_path):
 def test_materialized_path_never_becomes_a_filesystem_read(monkeypatch):
     import base64
     ref = reference()
-    path = ROOT / "src/prove/data/conformance/cases/run-artifacts-unicode.json"
+    path = ROOT / "src/tallylock/data/conformance/cases/run-artifacts-unicode.json"
     value = json.loads(path.read_bytes())
     # The schemas are the only shared, fixed filesystem input to verify_case.
     ref._schema("manifest", json.loads(base64.b64decode(value["manifest"])))
@@ -106,5 +106,5 @@ def test_reference_source_dependency_boundary():
             dependencies.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             dependencies.add(node.module.split(".")[0])
-    assert "prove" not in dependencies and "rfc8785" not in dependencies
+    assert "tallylock" not in dependencies and "rfc8785" not in dependencies
     assert dependencies <= set(sys.stdlib_module_names) | {"jsonschema"}

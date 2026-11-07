@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from prove.errors import ProveError
-from prove.merkle import proof, root, verify
+from tallylock.errors import TallyLockError
+from tallylock.merkle import proof, root, verify
 
 
 LEAVES = [b"alpha", b"bravo", b"charlie"]
@@ -73,7 +73,7 @@ def test_verify_rejects_corrupted_leaf_or_index() -> None:
     [([], 0), (LEAVES, -1), (LEAVES, len(LEAVES))],
 )
 def test_producers_reject_invalid_arguments(leaves: list[bytes], index: int) -> None:
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         proof(leaves, index)
 
 

@@ -10,7 +10,7 @@ import re
 import sys
 
 from . import __version__
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 LIMITATIONS = [
@@ -28,7 +28,7 @@ class _Parser(argparse.ArgumentParser):
 
     def error(self, message):
         # argparse includes arbitrary option values in its diagnostics.
-        raise ProveError("Invalid command arguments", code=2)
+        raise TallyLockError("Invalid command arguments", code=2)
 
 
 def _integer(value):
@@ -50,7 +50,7 @@ def _positive(value):
 
 
 def _parser():
-    parser = _Parser(prog='prove', description='Freeze external outputs and verify receipts offline.')
+    parser = _Parser(prog='tallylock', description='Freeze external outputs and verify receipts offline.')
     parser.add_argument('--version', action='version', version=__version__)
     commands = parser.add_subparsers(dest='command', required=True)
     init = commands.add_parser('init', help='Create a fresh editable manifest')
@@ -184,16 +184,16 @@ def _check_selected(directory, selected):
     try:
         with Directory(selected) as visible:
             if not _same(os.fstat(directory.fd), os.fstat(visible.fd)):
-                raise ProveError('Selected receipt identity changed', code=5)
-    except ProveError:
-        raise ProveError('Selected receipt identity could not be preserved', code=5) from None
+                raise TallyLockError('Selected receipt identity changed', code=5)
+    except TallyLockError:
+        raise TallyLockError('Selected receipt identity could not be preserved', code=5) from None
 
 
 def _outside(directory, parent):
     from .filesystem import _contains_directory
     from .store import _ancestor
     if _ancestor(directory, parent) or _contains_directory(directory.fd, os.fstat(parent.fd)):
-        raise ProveError('Output must be outside the operated receipt')
+        raise TallyLockError('Output must be outside the operated receipt')
 
 
 def _write(value, data, *, receipt=None, selected_receipt=None):
@@ -405,7 +405,7 @@ def _diagnostic(error, stage):
                 'local': 'Local operation failed',
                 'anchor': 'Timestamp action failed; completed local work is retained',
                 'output': 'Output could not be published'}[stage]
-    if not isinstance(error, ProveError) or stage in ('arguments', 'anchor'):
+    if not isinstance(error, TallyLockError) or stage in ('arguments', 'anchor'):
         return fallback
     text = error.message
     if not isinstance(text, str):
@@ -475,8 +475,8 @@ def main(argv=None) -> int:
         if phase[0] == 'anchor':
             report['anchor_action'] = {'state': 'interrupted', 'report': None}
         report['errors'] = [{'stage': 'interrupt', 'code': 130, 'message': 'Command interrupted'}]
-    except (ProveError, OSError) as error:
-        report['code'] = error.code if isinstance(error, ProveError) else 5
+    except (TallyLockError, OSError) as error:
+        report['code'] = error.code if isinstance(error, TallyLockError) else 5
         report['errors'] = [{'stage': phase[0], 'code': report['code'],
                              'message': _diagnostic(error, phase[0])}]
     except Exception:

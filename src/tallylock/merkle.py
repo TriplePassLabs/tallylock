@@ -6,12 +6,12 @@ import hashlib
 import re
 from collections.abc import Sequence
 
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 def _validate_leaves(leaves: Sequence[bytes]) -> None:
     if any(not isinstance(leaf, bytes) for leaf in leaves):
-        raise ProveError("Merkle leaves must be bytes")
+        raise TallyLockError("Merkle leaves must be bytes")
 
 
 def _leaf_hash(leaf: bytes) -> bytes:
@@ -54,7 +54,7 @@ def proof(leaves: Sequence[bytes], index: int) -> list[str]:
     """Return the ordered RFC 9162 inclusion proof for a leaf index."""
     _validate_leaves(leaves)
     if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(leaves):
-        raise ProveError("Merkle proof index is out of range")
+        raise TallyLockError("Merkle proof index is out of range")
     return _proof(leaves, index)
 
 

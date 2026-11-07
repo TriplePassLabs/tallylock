@@ -8,7 +8,7 @@ import hashlib
 from typing import Any
 
 from . import canonical, merkle, schema
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 MAX_EVENT_BYTES = 1024 * 1024
@@ -19,7 +19,7 @@ _SAFE = canonical.MAX_SAFE_INTEGER
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def _checked_add(left: int, right: int) -> int:

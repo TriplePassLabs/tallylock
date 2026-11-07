@@ -2,7 +2,7 @@
 
 Status: standalone implementation and local distribution matrix pass; whole-candidate runtime re-review approved. Independently verified live anchoring, the gated fresh-launch experiment and final delivery remain open. This is an unreleased candidate, with no universal production-readiness claim. Passing counts are scoped evidence, not a substitute for the requirements below.
 
-The user objective is a rigorously critiqued standalone Prove CLI ready for external research-session testing, followed by a testing handoff and documented feedback before public stable release. Research projects are ordinary external consumers. The goal remains active until the testing boundary is actually satisfied; it is not reduced to primitives or a fixture demo.
+The user objective is a rigorously critiqued standalone TallyLock CLI ready for external research-session testing, followed by a testing handoff and documented feedback before public stable release. Research projects are ordinary external consumers. The goal remains active until the testing boundary is actually satisfied; it is not reduced to primitives or a fixture demo.
 
 | Requirement | Evidence needed | Current state |
 |---|---|---|
@@ -31,7 +31,7 @@ The tested preflight wheel SHA256 was `6c273e71f42b69d9ea0ba7e54fb603aaa12bd30d3
 
 ## Release boundary
 
-The external session should install and use Prove like any independent evaluator. It must not rely on the lab's private services, edit Prove to make tests pass, or turn sealed research material into public artifacts without the research owner's existing authorization. Its feedback should separate installation/API friction, reproducible defects, mismatched claims and missing general capabilities.
+The external session should install and use TallyLock like any independent evaluator. It must not rely on the lab's private services, edit TallyLock to make tests pass, or turn sealed research material into public artifacts without the research owner's existing authorization. Its feedback should separate installation/API friction, reproducible defects, mismatched claims and missing general capabilities.
 
 No stable public release should be inferred from a development branch or an internal green suite. Frozen review packets record concrete artifact/test/review references and retain unsatisfied requirements explicitly. Do not describe an unresolved prerequisite as passed.
 

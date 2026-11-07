@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from prove import canonical, merkle, records
-from prove.errors import ProveError
+from tallylock import canonical, merkle, records
+from tallylock.errors import TallyLockError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +58,7 @@ def result(core, event_set, outcome="completed", reason=None):
 
 
 def invalid(callable_, *args):
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         callable_(*args)
 
 
@@ -86,7 +86,7 @@ def test_artifacts_builds_utf8_sorted_inventory_events_and_terminal():
     assert built.metadata["count"] == 3
     assert built.resources == {"calls": None, **{name: None for name in USAGE}}
     assert built.coverage == {"state": "not_applicable", "expected": None, "started": None, "ended": None}
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.build(core, "run-1", {}, "completed", None)
     core["budget"]["max_calls"] = 1
     assert records.build(core, "run-1", inventory(), "completed", None).budget == "unknown"
@@ -124,7 +124,7 @@ def test_noncompleted_empty_trace_is_explicit_but_completed_empty_trace_is_not()
     built = records.build(core, "run-1", inventory(), "failed", "before logging", events=[])
     assert built.events == ()
     assert built.coverage["state"] == "incomplete"
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.build(core, "run-1", inventory(), "completed", None, events=[])
 
 
@@ -264,12 +264,12 @@ def test_derived_usage_subtotals_reject_safe_integer_overflow():
 
 def test_encode_decode_limits_and_import_mode_are_bounded():
     oversized = {"value": "x" * records.MAX_EVENT_BYTES}
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.encode([oversized])
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.decode(b"x" * (records.MAX_RECORD_BYTES + 1))
     almost_maximum_event = {"value": "x" * (records.MAX_EVENT_BYTES - 20)}
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.encode([almost_maximum_event] * 65)
     line = b'{ "b" : 2 , "a" : 1 }\n'
     assert records.decode(line, require_canonical=False) == [{"b": 2, "a": 1}]
@@ -291,5 +291,5 @@ def test_build_hashes_the_manifest_once_and_normalizes_bad_attempt_ids():
     finally:
         records.canonical.digest = original
     assert calls == 1
-    with pytest.raises(ProveError):
+    with pytest.raises(TallyLockError):
         records.build(core, [], inventory(), "completed", None)

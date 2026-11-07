@@ -6,7 +6,7 @@ from copy import deepcopy
 import hashlib
 
 from . import canonical, schema
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 MAX_FIXTURE_BYTES = 8 * 1024 * 1024
@@ -14,7 +14,7 @@ MAX_FIXTURE_BYTES = 8 * 1024 * 1024
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def _read(read_artifact, path: str, entry: dict) -> bytes:

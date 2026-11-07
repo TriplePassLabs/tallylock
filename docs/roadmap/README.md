@@ -1,4 +1,4 @@
-# Prove flagship roadmap proposal
+# TallyLock flagship roadmap proposal
 
 Status: proposed design for review. Chris requested design and roadmap only at this stage. These documents do not implement new commands, authorize a Bitcoin download or mark the existing stronger audit complete.
 
@@ -8,7 +8,7 @@ Public-source checks trust the named service's Bitcoin view. Running a node has 
 
 Start with the [short user overview](NOVICE_OVERVIEW.md), then read the [full design](DESIGN.md), [phased roadmap](ROADMAP.md) and [20-feature catalog](FEATURES.json). The [agent operating guide](AGENT_GUIDE.md) distinguishes commands available today from proposed discovery/setup commands. It is not an active root AGENTS.md instruction file.
 
-The [website plan](WEBSITE_PLAN.md) recommends a proposed `triplepasslabs.com/prove` product page and reciprocal GitHub links. GitHub remains the canonical technical documentation and release source. The website helps people discover Prove; the CLI never requires that website to run.
+The [website plan](WEBSITE_PLAN.md) recommends a proposed `triplepasslabs.com/tallylock` product page and reciprocal GitHub links. GitHub remains the canonical technical documentation and release source. The website helps people discover TallyLock; the CLI never requires that website to run.
 
 | Phase | User outcome | Feature count |
 | --- | --- | --- |
@@ -46,6 +46,6 @@ Each catalog entry records existing foundations, new behavior, user value, accep
 
 The five-minute setup and pilot-completion measures are targets, not measured results. Linux/Python3.11-3.13 is the currently qualified platform. The first useful alpha does not wait for all twenty features or managed-node installation.
 
-Current implementation instructions remain in the [quickstart](https://github.com/TriplePassLabs/prove/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/QUICKSTART.md). The [current protocol](https://github.com/TriplePassLabs/prove/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/PROTOCOL.md) remains in force until an explicitly approved revision replaces a contract. Proposed commands and public-provider verification in these design documents are not available in the frozen0.1.0a1 runtime.
+Current implementation instructions remain in the [quickstart](https://github.com/TriplePassLabs/tallylock/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/QUICKSTART.md). The [current protocol](https://github.com/TriplePassLabs/tallylock/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/PROTOCOL.md) remains in force until an explicitly approved revision replaces a contract. Proposed commands and public-provider verification in these design documents are not available in the frozen0.1.0a1 runtime.
 
 Design reviewed with GPT-6 Astra and the main session on2026-11-07. The proposal retains immutable receipts and the offline verifier; implementation requires the agreed next phase's detailed contracts and tests.

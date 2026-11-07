@@ -12,11 +12,11 @@ from jsonschema import Draft202012Validator
 
 from . import canonical
 from .paths import validate_path, validate_paths
-from .errors import ProveError
+from .errors import TallyLockError
 
 
 _SCHEMA = canonical.loads(
-    files("prove").joinpath("data/schemas/protocol-v1.json").read_bytes()
+    files("tallylock").joinpath("data/schemas/protocol-v1.json").read_bytes()
 )
 _VALIDATORS = {
     name: Draft202012Validator({"$defs": _SCHEMA["$defs"], "$ref": f"#/$defs/{name}"})
@@ -30,13 +30,13 @@ _KINDS = ("artifact", "sample_start", "call", "sample_end", "attempt_end")
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise ProveError(message)
+        raise TallyLockError(message)
 
 
 def _supported(value: dict, key: str, supported: tuple[str, ...]) -> None:
     candidate = value.get(key)
     if isinstance(candidate, str) and candidate not in supported:
-        raise ProveError(f"unsupported {key}: {candidate!r}", code=4)
+        raise TallyLockError(f"unsupported {key}: {candidate!r}", code=4)
 
 
 def _formats(value: dict, kind: str) -> None:
@@ -76,14 +76,14 @@ def _shape(value: dict, kind: str) -> None:
     error = next(_VALIDATORS[kind].iter_errors(value), None)
     if error is not None:
         location = ".".join(str(part) for part in error.absolute_path) or "<root>"
-        raise ProveError(f"invalid {kind} at {location}: {error.message}")
+        raise TallyLockError(f"invalid {kind} at {location}: {error.message}")
 
 
 def _attempt(manifest: dict, attempt_id: str) -> dict:
     for attempt in manifest["attempts"]:
         if attempt["id"] == attempt_id:
             return attempt
-    raise ProveError(f"undeclared attempt: {attempt_id!r}")
+    raise TallyLockError(f"undeclared attempt: {attempt_id!r}")
 
 
 def _outcome(value: dict) -> None:
@@ -133,7 +133,7 @@ def validate_inventory(value: dict) -> dict:
         error = next(_VALIDATORS["inventoryEntry"].iter_errors(entry), None)
         if error is not None:
             location = ".".join(str(part) for part in error.absolute_path) or path
-            raise ProveError(f"invalid inventory entry at {location}: {error.message}")
+            raise TallyLockError(f"invalid inventory entry at {location}: {error.message}")
     return value
 
 
@@ -146,11 +146,11 @@ def _fixture_payload(value: dict, kind: str) -> dict:
                        "fixtureScores": "prove.fixture-scores.v1"}[kind]
     candidate = value.get("format")
     if isinstance(candidate, str) and candidate != expected_format:
-        raise ProveError(f"unsupported format: {candidate!r}", code=4)
+        raise TallyLockError(f"unsupported format: {candidate!r}", code=4)
     error = next(_VALIDATORS[kind].iter_errors(value), None)
     if error is not None:
         location = ".".join(str(part) for part in error.absolute_path) or "<root>"
-        raise ProveError(f"invalid {kind} at {location}: {error.message}")
+        raise TallyLockError(f"invalid {kind} at {location}: {error.message}")
     samples = value["samples"]
     _require(len({item["id"] for item in samples}) == len(samples), f"{kind} sample IDs must be unique")
     aggregate = value.get("aggregate")
@@ -288,7 +288,7 @@ def validate_inclusion(value: dict) -> dict:
         try:
             decoded = base64.b64decode(proof, validate=True)
         except (ValueError, binascii.Error) as error:
-            raise ProveError("inclusion proof must be canonical base64") from error
+            raise TallyLockError("inclusion proof must be canonical base64") from error
         _require(base64.b64encode(decoded).decode("ascii") == proof,
                  "inclusion proof must be canonical base64")
     return value

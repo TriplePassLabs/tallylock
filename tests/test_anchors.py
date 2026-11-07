@@ -13,7 +13,7 @@ from opentimestamps.core.serialize import BytesDeserializationContext, BytesSeri
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 import pytest
 
-from prove.errors import ProveError
+from tallylock.errors import TallyLockError
 from test_chain import HEADER, ModuleByName, cache_for
 
 
@@ -29,7 +29,7 @@ def encode(value):
 
 
 def test_raw_calendar_timestamp_preflight_before_operation_evaluation(monkeypatch):
-    from prove import anchors
+    from tallylock import anchors
     stamp = Timestamp(bytes.fromhex(DIGEST))
     stamp.ops.add(OpSHA256()).attestations.add(PendingAttestation("https://a.pool.opentimestamps.org"))
     encoded = encode(stamp)
@@ -37,7 +37,7 @@ def test_raw_calendar_timestamp_preflight_before_operation_evaluation(monkeypatc
     calls = []
     monkeypatch.setattr(OpSHA256, "__call__", lambda *a: calls.append(a))
     for data in (encoded+b"trailing", b"x"*10001, b"\x08"*65):
-        with pytest.raises(ProveError):
+        with pytest.raises(TallyLockError):
             anchors.parse_timestamp(data, bytes.fromhex(DIGEST))
     assert calls == []
 
@@ -69,7 +69,7 @@ def modules():
 
 
 def assert_error(call, code=2):
-    with pytest.raises(ProveError) as error:
+    with pytest.raises(TallyLockError) as error:
         call()
     assert error.value.code == code
 

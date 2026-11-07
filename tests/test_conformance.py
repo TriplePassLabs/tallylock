@@ -9,11 +9,11 @@ import sys
 
 import pytest
 
-from prove import canonical, merkle, verify
+from tallylock import canonical, merkle, verify
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / "src/prove/data/conformance"
+CORPUS = ROOT / "src/tallylock/data/conformance"
 INDEX = json.loads((CORPUS / "index.json").read_bytes())["cases"]
 CANONICAL = json.loads((CORPUS / "canonical.json").read_bytes())
 TREES = json.loads((CORPUS / "trees.json").read_bytes())
@@ -24,7 +24,7 @@ ISOLATED = r'''
 import importlib.abc, runpy, socket, sys
 class Unavailable(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in ('prove', 'rfc8785'):
+        if fullname.split('.')[0] in ('tallylock', 'rfc8785'):
             raise ModuleNotFoundError('production imports unavailable in reference')
 sys.meta_path.insert(0, Unavailable())
 def offline(*args, **kwargs):
