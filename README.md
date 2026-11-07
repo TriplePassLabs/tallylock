@@ -43,6 +43,7 @@ Static examples and canonical conformance assets ship under `prove/data/examples
 - [Acceptance tests](docs/ACCEPTANCE.md): tests required before implementation claims.
 - [Sources and alternatives](docs/SOURCES.md): primary references and reuse decisions.
 - [Review log](docs/reviews/REVIEW_LOG.md): critiques and their disposition.
+- [Proposed flagship roadmap](docs/roadmap/README.md): setup choices, AI instructions and twenty staged features. Design for review; proposed commands are not implemented.
 
 ## License
 

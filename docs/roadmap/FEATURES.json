@@ -1,0 +1,230 @@
+{
+  "format": "prove.proposed-roadmap.v1",
+  "status": "proposed_not_implemented",
+  "author": "GPT-6 Astra",
+  "date": "2026-11-07",
+  "feature_count": 20,
+  "note": "Existing primitives are foundations, not counted as new features. Twenty entries are a staged portfolio, not twenty first-alpha prerequisites.",
+  "features": [
+    {
+      "id": "F01", "name": "Qualified installation and setup wizard", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "Wheel/source and venv installation; Linux/Python 3.11-3.13 qualification.",
+      "new": "Tested pipx/uv installation, novice setup, explicit advanced paths and staged real-OS qualification.",
+      "user_value": "An unfamiliar user can start without understanding Python environments or Bitcoin storage choices.",
+      "acceptance": ["Fresh Linux installation from a release artifact completes local receipt flow without source checkout.", "Wizard and noninteractive input produce equivalent validated configuration.", "Setup never installs a node or contacts a network implicitly.", "Unsupported-runtime behavior is documented and tested; macOS/Windows support is advertised only after qualification."],
+      "dependencies": ["F02"],
+      "risks": ["Packaging tool differences", "Current requires-python floor is broader than tested interpreter range", "Filesystem portability"],
+      "cutline": "Linux first; native Windows and macOS qualification are phase 4 follow-through."
+    },
+    {
+      "id": "F02", "name": "Named verification profiles and typed configuration", "phase": 1,
+      "priority": "alpha_required", "state": "new",
+      "existing": "Explicit CLI policy/cache and RPC configuration.",
+      "new": "Versioned user profiles, resolved-policy reporting, path roles and credential references.",
+      "user_value": "Users choose their trust model once without hiding it on later checks.",
+      "acceptance": ["CLI overrides and named-profile resolution are deterministic and visible.", "Unknown config versions fail explicitly and migrations preserve backups.", "No receipt/project directory can silently supply a trusted profile.", "Profile switching never changes sealed cores or running-job policy."],
+      "dependencies": [],
+      "risks": ["Implicit trust escalation", "Secret storage", "Migration compatibility"],
+      "cutline": "No cloud account or profile synchronization service."
+    },
+    {
+      "id": "F03", "name": "Public-provider timestamp verification", "phase": 1,
+      "priority": "alpha_required", "state": "new",
+      "existing": "OTS parsing, header binding and offline verification engine.",
+      "new": "Explicit HTTPS acquisition using one provider adapter and separately versioned provider evidence.",
+      "user_value": "Check a timestamp without downloading Bitcoin history.",
+      "acceptance": ["A real completed OTS proof checks against retrieved raw headers and coherent chain observations.", "Provider trust, confirmation basis and freshness limits appear in every result.", "Wrong header/hash, orphan status, contradictory observations, malformed replies and stale observations cannot silently pass.", "No provider response fabricates Bitcoin Core node-state fields.", "Offline verification remains network-free and read-only."],
+      "dependencies": ["F02"],
+      "risks": ["Provider lies or outages", "Privacy of IP/height queries", "Rate limiting and reorgs"],
+      "cutline": "One provider first; no automatic failover or majority-equals-consensus claim."
+    },
+    {
+      "id": "F04", "name": "Guided existing-node attachment", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "Read-only Bitcoin Core RPC exporter and explicit external cache.",
+      "new": "Setup-assisted cookie/credential references, connection diagnosis and explicit source ownership.",
+      "user_value": "Advanced users reuse their node without manual cache plumbing or installing another one.",
+      "acceptance": ["Local cookie attachment and authorized remote HTTPS/tunnel scenarios export valid evidence.", "Unsynchronized node stays insufficient; authentication/transport errors are distinct.", "Remote plaintext credentials and credential-bearing URLs are rejected.", "Attachment cannot change node configuration, stop it or delete its data."],
+      "dependencies": ["F02"],
+      "risks": ["Misidentified remote node", "RPC secret leakage", "Overclaiming validation from self-reported RPC fields"],
+      "cutline": "No node installation, discovery scan or wallet management."
+    },
+    {
+      "id": "F05", "name": "Trust-aware doctor and actionable status", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "Inspect and structured verification errors.",
+      "new": "Local environment/profile diagnosis, explicit optional connectivity probes, exact recovery commands and short plain-language verification summaries through proposed --human.",
+      "user_value": "Users understand why a check is pending or unavailable and what action can resolve it.",
+      "acceptance": ["Doctor never changes files or contacts network unless an online probe is explicitly requested.", "Pending proof, stale evidence, wrong interpreter, unsupported filesystem and source failure have distinct actionable diagnostics.", "Shareable diagnostics redact credentials and sensitive local paths.", "Status is never presented as a completed verification verdict.", "Phase-1 --human summaries preserve effective policy, source trust, result, limitations and exit codes while legacy commands retain default JSON.", "Proposed --human and --json are mutually exclusive; conflicts fail before work and non-TTY never prompts."],
+      "dependencies": ["F02", "F03", "F04"],
+      "risks": ["Health probes mistaken for real verification", "Secret leakage in errors"],
+      "cutline": "No automatic repairs or background monitoring."
+    },
+    {
+      "id": "F06", "name": "Agent discovery and operating contract", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "JSON stdout and stable numeric exit codes.",
+      "new": "Machine command/schema discovery, stable error identifiers, packaged runtime guide and repository contributor instructions.",
+      "user_value": "Any chosen assistant can use the same reliable CLI without a vendor integration.",
+      "acceptance": ["A noninteractive consumer discovers and performs the supported workflow without parsing help prose.", "JSON/non-TTY paths never prompt; old commands retain existing JSON behavior.", "Guide examples execute against built distributions in tests.", "Receipt content never authorizes commands, network or code execution."],
+      "dependencies": ["F02", "F03"],
+      "risks": ["Prompt injection", "Overpromising automatic AGENTS.md discovery", "Schema drift"],
+      "cutline": "No required MCP server, model account or assistant SDK."
+    },
+    {
+      "id": "F07", "name": "Resumable timestamp jobs", "phase": 2,
+      "priority": "high", "state": "partial_foundation",
+      "existing": "Explicit anchor/upgrade, bounded retry and atomic proof persistence.",
+      "new": "Durable user-visible job state, bounded watch/resume and cancellation across multiple receipt anchors.",
+      "user_value": "Finish anchoring later without keeping a terminal open or guessing which step completed.",
+      "acceptance": ["Crash/restart resumes the last durable step without changing core IDs.", "Jobs preserve pending versus failed state and expose next eligible retry time.", "Watch has a deadline and rate limits; cancellation leaves a resumable journal.", "Background/autostart is never enabled implicitly."],
+      "dependencies": ["F02", "F05"],
+      "risks": ["Unbounded polling", "Concurrent writers", "Duplicate jobs"],
+      "cutline": "Foreground bounded operations first; no always-on daemon."
+    },
+    {
+      "id": "F08", "name": "Safe portable receipt bundles", "phase": 2,
+      "priority": "high", "state": "new",
+      "existing": "Portable directory receipt and inclusion JSON.",
+      "new": "Versioned export/import container with safe extraction, manifest and explicit disclosure preview.",
+      "user_value": "Share one file while preserving exact receipt identity.",
+      "acceptance": ["Bundle round trip preserves core/artifact bytes and receipt IDs.", "Traversal, symlinks, duplicate/case-colliding paths and decompression bombs fail within resource bounds.", "Recovery state and secrets are excluded by default.", "Bundled chain evidence is never implicitly selected as trusted."],
+      "dependencies": ["F16"],
+      "risks": ["Archive parser attack surface", "Accidental disclosure"],
+      "cutline": "No remote artifact fetching or automatic extraction on ordinary verify."
+    },
+    {
+      "id": "F09", "name": "Rich shareable local evidence reports", "phase": 2,
+      "priority": "high", "state": "new",
+      "existing": "Detailed machine verification reports; short human CLI summaries arrive in phase 1 through F05.",
+      "new": "Accessible shareable static HTML and detailed text report exports with evidence/claim separation and source freshness.",
+      "user_value": "A reviewer can understand a receipt without reading raw JSON.",
+      "acceptance": ["Every displayed verdict corresponds to a machine report field and selected policy.", "Hostile artifact strings cannot execute HTML or scripts.", "Reports load offline without remote assets, tracking or external fonts.", "Visual and screen-reader checks confirm readable failure and uncertainty states."],
+      "dependencies": ["F03", "F06"],
+      "risks": ["Misleading green badges", "XSS", "Stale report reuse"],
+      "cutline": "Local export only; no hosted dashboard or account."
+    },
+    {
+      "id": "F10", "name": "Evidence refresh and audit export", "phase": 2,
+      "priority": "high", "state": "partial_foundation",
+      "existing": "RPC cache export and explicit offline selection.",
+      "new": "Receipt-driven required-height discovery, provider/node acquisition export and explicit refresh comparison.",
+      "user_value": "Keep a compact auditable record and see when a newer chain observation changes a result.",
+      "acceptance": ["Exports record source, time, exact selected headers and policy without credentials.", "Refreshing preserves old evidence and shows reorg or confirmation differences.", "Offline reuse never claims current freshness.", "Outputs outside receipts are no-clobber and require explicit destination."],
+      "dependencies": ["F03", "F04"],
+      "risks": ["Cache treated as authenticated provenance", "Reorg ambiguity", "Hidden overwrite"],
+      "cutline": "No self-asserted source label upgrades trust."
+    },
+    {
+      "id": "F11", "name": "Local project registry and bounded batch work", "phase": 2,
+      "priority": "medium", "state": "new",
+      "existing": "Single receipt operations.",
+      "new": "Explicitly registered receipt locations, filtered batch operations and per-receipt outcomes.",
+      "user_value": "Manage many experiments without shell scripts or losing pending work.",
+      "acceptance": ["Registry can be rebuilt and never substitutes for receipt verification.", "Batch uses bounded concurrency and respects source-wide retry/cache limits.", "One malformed receipt does not hide others' results; aggregate exit policy is documented.", "Filesystem scans only traverse explicitly selected roots."],
+      "dependencies": ["F07", "F06"],
+      "risks": ["Stale paths", "Accidental broad scans", "Rate-limit amplification"],
+      "cutline": "No cloud database or automatic whole-home indexing."
+    },
+    {
+      "id": "F12", "name": "Receipt comparison with semantic limits", "phase": 3,
+      "priority": "medium", "state": "new",
+      "existing": "Stable canonical cores and artifact inventory.",
+      "new": "Explain plan/configuration/artifact/result differences between selected receipts.",
+      "user_value": "Review what changed without manually diffing nested JSON and files.",
+      "acceptance": ["Reports exact declared changes and unchanged commitments.", "Incompatible scorer/dataset/configuration comparisons are flagged rather than ranked as equivalent.", "Comparison never claims causal improvement or statistical significance.", "Private artifact contents are not disclosed by default."],
+      "dependencies": ["F09"],
+      "risks": ["False scientific comparability", "Sensitive text exposure"],
+      "cutline": "No automatic benchmark leaderboard."
+    },
+    {
+      "id": "F13", "name": "Declared attempt and disclosure accounting", "phase": 3,
+      "priority": "medium", "state": "partial_foundation",
+      "existing": "Declared attempt IDs, outcomes and coverage checks within receipts.",
+      "new": "Separate versioned schedule/disclosure artifact linking expected attempts to terminal receipts.",
+      "user_value": "Readers see missing or superseded declared outcomes instead of only the best result.",
+      "acceptance": ["Expected attempts have published terminal dispositions or visibly missing status.", "Schedule amendments retain their prior commitments.", "Off-schedule or concealed attempts are explicitly beyond the guarantee.", "Existing receipt IDs and attempt semantics remain unchanged."],
+      "dependencies": ["F11", "F12"],
+      "risks": ["Claims of exhaustive experiment history", "Retrospective schedules"],
+      "cutline": "No global transparency service or trusted execution."
+    },
+    {
+      "id": "F14", "name": "Generic reproducibility templates and preflight", "phase": 3,
+      "priority": "medium", "state": "partial_foundation",
+      "existing": "Generic manifest init and examples; declared budget/resource fields.",
+      "new": "Data-only templates and pre-seal completeness checks for tests, benchmarks and ordinary output collections.",
+      "user_value": "Capture useful context without knowing every protocol field.",
+      "acceptance": ["Templates need no model/provider SDK or research repository.", "Missing revisions, dataset digests or scorer declarations are actionable without inventing values.", "Cost/token budgets remain declarations or checks on supplied records, never independently measured activity.", "Preflight neither executes harnesses nor rewrites finalized cores."],
+      "dependencies": ["F06"],
+      "risks": ["Template claims exceed available evidence", "Domain-specific core creep"],
+      "cutline": "No arbitrary plugins or scorer execution."
+    },
+    {
+      "id": "F15", "name": "Optional issuer signatures", "phase": 3,
+      "priority": "medium", "state": "new",
+      "existing": "Issuer identity intentionally unverified.",
+      "new": "Detached established-format signatures and explicit verifier-selected key trust.",
+      "user_value": "Bind a receipt to a key or known publishing identity without claiming execution attestation.",
+      "acceptance": ["Detached signing preserves receipt core IDs.", "Unknown, invalid, expired and revoked key states remain distinct.", "Key possession is not automatically verified human/legal identity.", "Private keys never enter receipt bundles or ordinary verification processes."],
+      "dependencies": ["F09", "F16"],
+      "risks": ["Identity overclaim", "Key lifecycle complexity", "Cryptographic format proliferation"],
+      "cutline": "Choose an established format in separate review; no custom signature cryptography."
+    },
+    {
+      "id": "F16", "name": "Independent compatibility and adversarial corpus", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "Packaged conformance fixtures and extensive adversarial tests.",
+      "new": "Published cross-version contract corpus for profiles/evidence/reports and independent consumer validation.",
+      "user_value": "Receipts and automation remain usable as Prove evolves.",
+      "acceptance": ["Frozen receipt IDs/vectors still pass after each feature.", "Independent consumer validates published wire examples rather than importing producer helpers.", "Unknown versions and unsupported algorithms have stable failure semantics.", "Published corpus identifies which cases are synthetic, historical or real live acquisition."],
+      "dependencies": [],
+      "risks": ["Tests derived from implementation reproduce its errors", "Synthetic data mistaken for live evidence"],
+      "cutline": "No claim that passing vectors proves every implementation secure."
+    },
+    {
+      "id": "F17", "name": "Verifiable releases and dependency provenance", "phase": 1,
+      "priority": "alpha_required", "state": "partial_foundation",
+      "existing": "Built wheel/source hashes and installed-artifact testing.",
+      "new": "Release SBOM, dependency/license inventory, build provenance and versioned installation verification instructions.",
+      "user_value": "Users and agents can identify and audit the software they installed.",
+      "acceptance": ["Published hashes and provenance reference the actual wheel/source bytes.", "SBOM lists runtime dependencies and versions; license obligations are preserved.", "Release workflow tests installed artifacts on qualified interpreters.", "Reproducible-build claims require matching independent builds, not merely recorded checksums."],
+      "dependencies": ["F16"],
+      "risks": ["Supply-chain compromise", "Misleading reproducibility claim", "Package-name collision"],
+      "cutline": "No new paid signing service required."
+    },
+    {
+      "id": "F18", "name": "Bounded CI workflow integration", "phase": 3,
+      "priority": "medium", "state": "new",
+      "existing": "Composable CLI and standalone receipt output.",
+      "new": "Versioned CI examples and optional thin action for sealing, verifying and publishing selected artifacts.",
+      "user_value": "Add receipts to an existing pipeline without replacing the pipeline.",
+      "acceptance": ["Local CLI reproduces CI output without GitHub-specific runtime dependencies.", "Untrusted pull requests cannot obtain signing secrets or execute receipt instructions.", "Network writes and publication destinations are explicit.", "Timeout, retry and concurrency budgets are bounded and visible."],
+      "dependencies": ["F06", "F08", "F17"],
+      "risks": ["CI secret exposure", "Automatic publication", "Unpinned action dependencies"],
+      "cutline": "No hosted Prove account or mandatory action."
+    },
+    {
+      "id": "F19", "name": "Optional managed pruned Bitcoin Core", "phase": 4,
+      "priority": "advanced_optional", "state": "new",
+      "existing": "Independent node evidence export, not lifecycle management.",
+      "new": "Resource plan, pinned verified installation, explicit start/stop/resume and conservative updates for a dedicated owned node.",
+      "user_value": "Users who choose independent infrastructure can manage it without becoming system administrators.",
+      "acceptance": ["No download or start happens before an accepted exact resource/install plan.", "Pruning disclosure explains full-history initial transfer and nonprunable state overhead.", "Hard CPU/memory/network caps and disk safety are enforced or the managed option refuses to promise them.", "No wallet, attached-node mutation, silent system service or unsafe downgrade.", "Binary removal retains data; destructive purge requires separate explicit authorization."],
+      "dependencies": ["F04", "F05", "F17", "F20"],
+      "risks": ["Large bandwidth/disk usage", "Platform isolation gaps", "Database compatibility", "Support burden"],
+      "cutline": "Separate advanced component, never required by installation or ordinary verification."
+    },
+    {
+      "id": "F20", "name": "Transparent data lifecycle and recovery", "phase": 2,
+      "priority": "high", "state": "partial_foundation",
+      "existing": "Receipt persistence recovery and no-clobber immutable outputs.",
+      "new": "Configuration backup/migration, storage inventory, conservative cleanup and package/component uninstall guidance.",
+      "user_value": "Users can upgrade, move or remove software without losing evidence.",
+      "acceptance": ["Storage report separates disposable cache, durable evidence, receipts and optional node data.", "Dry-run cleanup lists exact targets and never treats receipts/evidence as cache.", "CLI uninstall retains user data and identifies its locations.", "Configuration migration is atomic and rollback preserves the previous readable version.", "Moving explicitly selected durable data verifies bytes before changing references."],
+      "dependencies": ["F02", "F05"],
+      "risks": ["Accidental deletion", "Cross-filesystem move failure", "Symlink/path confusion"],
+      "cutline": "Managed-node lifecycle extends this in phase 4; no universal destructive purge switch."
+    }
+  ]
+}
