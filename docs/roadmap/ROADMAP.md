@@ -13,6 +13,8 @@ The catalog has exactly twenty distinct features. Existing hashes, Merkle proofs
 
 Website discovery and reciprocal lab/GitHub links are cross-cutting distribution work under F01/F17, not another feature. See [WEBSITE_PLAN.md](WEBSITE_PLAN.md) for the proposed `/tallylock` landing page, canonical documentation ownership and release-link checks. Offline verification never depends on that website.
 
+> Phase 1 below is superseded by [PHASE1_RECUT.md](PHASE1_RECUT.md) (2026-11-07): TallyLock as the neutral scoreboard for eval claims.
+
 ## Phase 1: A normal user can install and check a receipt
 
 Features F01–F06, F16 and F17. Deliver the supported Linux wheel/source distribution, tested pipx/uv/venv instructions, setup profiles, explicit public-provider checking, existing-node attachment, local diagnostics, versioned agent interface and release provenance. F05 includes short plain-language verification summaries in phase 1 through proposed `--human`; legacy commands retain default JSON. Proposed `--human` and `--json` are mutually exclusive, with unchanged policy and exit semantics.
