@@ -1,4 +1,4 @@
-"""The static board: one HTML file, no scripts, no remote assets, every string escaped."""
+"""The static board: one HTML file, one inline script that only enhances, no remote assets, every string escaped."""
 import json
 import re
 
@@ -41,7 +41,9 @@ def test_page_is_static_and_themed(tmp_path):
     out = tmp_path / "site"
     board.build(reg, out)
     page = (out / "index.html").read_text()
-    assert "<script" not in page.lower()
+    # One inline script for animation and copy buttons; it never writes HTML, and the page works without it.
+    assert page.lower().count("<script") == 1 and "<script>" in page and "innerHTML" not in page
+    assert "<details" in page and "<summary>" in page
     assert "prefers-color-scheme: light" in page and "color-scheme: dark light" in page and "<style>" in page
     assert not re.search(r"(src|href)=[\"']https?://(?!example\.org)", page)
     assert "—" not in page
@@ -57,7 +59,7 @@ def test_hostile_strings_are_escaped(tmp_path):
     out = tmp_path / "site"
     board.build(reg, out)
     page = (out / "index.html").read_text()
-    assert "<script" not in page.lower() and "<img" not in page and "<b>" not in page
+    assert page.lower().count("<script") == 1 and "<img" not in page and "<b>" not in page
     assert "&lt;script&gt;" in page
 
 
@@ -134,7 +136,7 @@ def test_group_text_is_escaped(tmp_path):
     out = tmp_path / "site"
     board.build(reg, out)
     page = (out / "index.html").read_text()
-    assert "<script" not in page.lower() and "<img" not in page
+    assert page.lower().count("<script") == 1 and "<img" not in page
     assert "&lt;script&gt;" in page
 
 
@@ -161,7 +163,7 @@ def test_other_plans_note_only_where_the_entry_shows_them(tmp_path):
     assert page.count("Only this plan is part of this entry") == 1
     assert "Plan 2 in its repo. Only this plan is part of this entry; the earlier plans stay in the repo." in page
     assert page.count("not part of it") == 1
-    assert page.index("not part of it") > page.index("</table>")
+    assert page.index("not part of it") > page.index("<footer>")
 
 
 def test_ties_are_pairs_and_never_chain(tmp_path):
@@ -180,3 +182,32 @@ def test_ties_are_pairs_and_never_chain(tmp_path):
     board.build(reg, out)
     ties = {frozenset(g["plan_ids"]) for g in json.loads((out / "entries.json").read_text())["groups"] if g["kind"] == "tie"}
     assert ties == {frozenset([plans["grace"], plans["quinn"]]), frozenset([plans["quinn"], plans["graham"]])}
+
+
+def test_benchmarks_runs_and_verdicts(tmp_path):
+    reg, (a, b, c) = three_entries(tmp_path)
+    out = tmp_path / "site"
+    board.build(reg, out)
+    data = json.loads((out / "entries.json").read_text())
+    rows = {row["plan_id"]: row for row in data["rows"]}
+    assert [attempt["score"] for attempt in rows[a]["attempts"]] == ["0.500", "0.600", "0.700"]
+    assert all(not key.startswith("_") for row in data["rows"] for key in row)
+    page = (out / "index.html").read_text()
+    # Alpha and Beta share a setup; Gamma used another dataset, so it gets its own benchmark and is never ranked against them.
+    assert "Benchmark 1" in page and "Benchmark 2" in page and "Benchmark 3" not in page
+    assert "Tied with Beta" in page and "Tied with Alpha" in page and "Gamma beyond noise" not in page
+    assert page.count('class="tie-link"') == 1
+    assert 'id="alpha"' in page and 'id="beta"' in page and 'id="gamma"' in page
+    assert page.count('class="run"') == 9 and "Plan locked" in page and "3 runs recorded" in page
+
+
+def test_failed_runs_and_bitcoin_state_show_in_the_record(tmp_path):
+    reg, plan = make_registry(tmp_path)
+    out = tmp_path / "site"
+    board.build(reg, out)
+    page = (out / "index.html").read_text()
+    assert "1 failed run: counted in the claim, never averaged in." in page and page.count('class="x"') == 1
+    row = json.loads((out / "entries.json").read_text())["rows"][0]
+    assert [attempt["outcome"] for attempt in row["attempts"]].count("completed") == 2
+    if row["bitcoin"]:
+        assert "Bitcoin timestamp" in page

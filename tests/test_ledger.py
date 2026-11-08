@@ -421,7 +421,7 @@ def test_anchor_head_stores_proof_and_verifies_offline(tmp_path):
     again = ledger.anchor_head(project.repo, plan.plan_id, submit=submit)
     assert again["state"] == "unchanged" and len(calls) == 4
     checked = ledger.verify_ledger(project.repo, plan.plan_id)
-    assert checked["anchors"] == [{"seq": 3, "state": "pending"}]
+    assert checked["anchors"] == [{"seq": 3, "state": "pending", "heights": []}]
 
 
 def test_anchored_head_with_cached_header_and_anchor_contradiction(tmp_path):
@@ -433,7 +433,7 @@ def test_anchored_head_with_cached_header_and_anchor_contradiction(tmp_path):
     assert ledger.verify_anchor(project.repo, plan.plan_id, 3, chain_cache=cache)["state"] == "anchored"
     assert ledger.verify_anchor(project.repo, plan.plan_id, 3)["state"] == "insufficient_chain"
     checked = ledger.verify_ledger(project.repo, plan.plan_id, chain_cache=cache)
-    assert checked["anchors"] == [{"seq": 3, "state": "anchored"}]
+    assert checked["anchors"] == [{"seq": 3, "state": "anchored", "heights": [1]}]
     # Moving an anchored proof onto a different head is caught offline.
     (plan.directory/"ledger-head-3.ots").rename(plan.directory/"ledger-head-2.ots")
     with pytest.raises(ledger.LedgerError) as error:
@@ -458,7 +458,7 @@ def test_run_anchors_by_default_and_failures_stay_pending(tmp_path):
     report = project.run(plan, anchor=True, calendar_submit=lambda origin, commitment, **kw: reply(commitment, origin))
     assert report["anchor"] == {"state": "pending", "submitted": True, "seq": 2,
                                 "proof": ".tallylock/plans/" + plan.plan_id + "/ledger-head-2.ots"}
-    assert ledger.verify_ledger(project.repo, plan.plan_id)["anchors"] == [{"seq": 2, "state": "pending"}]
+    assert ledger.verify_ledger(project.repo, plan.plan_id)["anchors"] == [{"seq": 2, "state": "pending", "heights": []}]
 
 
 def test_seed_placeholder_keeps_one_plan(tmp_path):

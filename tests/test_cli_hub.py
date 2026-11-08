@@ -47,7 +47,7 @@ def test_export_bundle_registry_and_board(repo, tmp_path, capsys):
     code, built = call(capsys, "board", "--json", str(registry), "--out", str(tmp_path/"site"))
     assert code == 0 and built["rows"] == 1
     page = (tmp_path/"site"/"index.html").read_text()
-    assert "Demo &lt;eval&gt;" in page and "<script" not in page
+    assert "Demo &lt;eval&gt;" in page and page.lower().count("<script") == 1
 
 
 def test_registry_verify_fails_on_tampered_entry(repo, tmp_path, capsys):

@@ -665,11 +665,11 @@ def verify_ledger(repo: Path, plan_id: str, *, chain_cache: dict | None = None,
             raise LedgerError("removed", f"anchored ledger head {seq} is missing from the ledger")
         _require(path.stat().st_size <= anchors.MAX_PROOF_BYTES, "ledger head proof exceeds its byte limit")
         try:
-            state = anchors.verify(path.read_bytes(), hashlib.sha256(lines[seq - 1]).hexdigest(), view,
-                                   minimum_confirmations=minimum_confirmations)["state"]
+            checked = anchors.verify(path.read_bytes(), hashlib.sha256(lines[seq - 1]).hexdigest(), view,
+                                     minimum_confirmations=minimum_confirmations)
         except TallyLockError:
             raise LedgerError("anchor_mismatch", f"anchored ledger head {seq} does not match the ledger") from None
-        proofs.append({"seq": seq, "state": state})
+        proofs.append({"seq": seq, "state": checked["state"], "heights": checked["required_heights"]})
     stamps = []
     for path in directory.iterdir():
         match = _TOKEN.fullmatch(path.name)
