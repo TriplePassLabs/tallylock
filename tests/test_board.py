@@ -42,7 +42,7 @@ def test_page_is_static_and_themed(tmp_path):
     board.build(reg, out)
     page = (out / "index.html").read_text()
     assert "<script" not in page.lower()
-    assert "prefers-color-scheme: dark" in page and "<style>" in page
+    assert "prefers-color-scheme: light" in page and "color-scheme: dark light" in page and "<style>" in page
     assert not re.search(r"(src|href)=[\"']https?://(?!example\.org)", page)
     assert "—" not in page
     assert 'name="viewport"' in page
@@ -116,7 +116,7 @@ def test_default_groups_tie_comparable_entries_and_warn_about_mismatches(tmp_pat
     assert all("dataset" in g["label"] for g in warnings)
     page = (out / "index.html").read_text()
     assert "Statistical tie" in page and "Not comparable" in page and 'class="warn"' in page
-    assert "Alpha, Beta" in page or "Beta, Alpha" in page
+    assert "Alpha and Beta" in page or "Beta and Alpha" in page
 
 
 def test_groups_override_replaces_the_default(tmp_path):
@@ -144,7 +144,7 @@ def test_other_plans_note_only_where_the_entry_shows_them(tmp_path):
     reg, _ = make_registry(tmp_path / "single")
     board.build(reg, tmp_path / "single-site")
     page = (tmp_path / "single-site" / "index.html").read_text()
-    assert "not part of this entry" not in page and "not part of it" not in page
+    assert "Only this plan is part of this entry" not in page and "not part of it" not in page
     project = Project(tmp_path, [{"stdout": "tallylock: score=0.5\n"}, {"stdout": "tallylock: score=0.6\n"}])
     first = project.plan()
     project.run(first)
@@ -158,7 +158,25 @@ def test_other_plans_note_only_where_the_entry_shows_them(tmp_path):
     board.build(reg, out)
     page = (out / "index.html").read_text()
     # The second plan's locked number proves an earlier plan exists; the first only has the claimed count.
-    assert page.count("not part of this entry") == 1
-    assert "This is plan 2 from its repo. The earlier plans are not part of this entry." in page
+    assert page.count("Only this plan is part of this entry") == 1
+    assert "Plan 2 in its repo. Only this plan is part of this entry; the earlier plans stay in the repo." in page
     assert page.count("not part of it") == 1
     assert page.index("not part of it") > page.index("</table>")
+
+
+def test_ties_are_pairs_and_never_chain(tmp_path):
+    # Grace ties Quinn and Quinn ties Graham, but Grace beats Graham: no group may claim all three are tied.
+    from test_compare import make
+    from test_ledger import SETUP
+    reg = tmp_path / "reg"
+    plans = {}
+    for name, scores in (("grace", ("0.235", "0.2525", "0.26", "0.2375", "0.245")),
+                         ("quinn", ("0.215", "0.2575", "0.1975", "0.24", "0.2025")),
+                         ("graham", ("0.205", "0.22", "0.2075", "0.1975", "0.19"))):
+        repo, plan_id = make(tmp_path, name, scores, SETUP)
+        registry.add_entry(reg, repo, plan_id, {**META, "title": name})
+        plans[name] = plan_id
+    out = tmp_path / "site"
+    board.build(reg, out)
+    ties = {frozenset(g["plan_ids"]) for g in json.loads((out / "entries.json").read_text())["groups"] if g["kind"] == "tie"}
+    assert ties == {frozenset([plans["grace"], plans["quinn"]]), frozenset([plans["quinn"], plans["graham"]])}

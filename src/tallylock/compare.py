@@ -137,7 +137,9 @@ def compare(left, right) -> dict:
 
 
 def groups_for_board(registry: Path, *, report: dict | None = None) -> list[dict]:
-    """Tie groups (comparable and statistically tied, transitively) and warnings for mismatched pairs.
+    """Tied pairs (comparable and within each other's noise) and warnings for mismatched pairs.
+
+    Ties are reported pair by pair because a tie is not transitive: A may tie B and B tie C while A beats C.
 
     A warning is raised only for a pair that agrees on at least one ranking field but differs on
     another, because entries with nothing in common are simply different projects.
@@ -146,15 +148,7 @@ def groups_for_board(registry: Path, *, report: dict | None = None) -> list[dict
     report = registry_module.verify_registry(registry) if report is None else report
     ids = [item["plan_id"] for item in report["entries"] if item["ok"]]
     sides = {plan_id: _side((registry/"entries"/plan_id, plan_id)) for plan_id in ids}
-    parent = {plan_id: plan_id for plan_id in ids}
-
-    def find(item):
-        while parent[item] != item:
-            parent[item] = parent[parent[item]]
-            item = parent[item]
-        return item
-
-    warnings = []
+    ties, warnings = [], []
     for index, first in enumerate(ids):
         for second in ids[index + 1:]:
             info_a, _, scores_a = sides[first]
@@ -167,10 +161,5 @@ def groups_for_board(registry: Path, *, report: dict | None = None) -> list[dict
                     warnings.append({"kind": "warning", "plan_ids": [first, second],
                                      "label": f"Not comparable, so not ranked against each other (differs in {', '.join(blocking)})"})
             elif len(scores_a) >= 2 and len(scores_b) >= 2 and welch(scores_a, scores_b)["tied"]:
-                parent[find(first)] = find(second)
-    clusters = {}
-    for plan_id in ids:
-        clusters.setdefault(find(plan_id), []).append(plan_id)
-    ties = [{"kind": "tie", "label": "Statistical tie", "plan_ids": members}
-            for members in clusters.values() if len(members) > 1]
+                ties.append({"kind": "tie", "label": "Statistical tie", "plan_ids": [first, second]})
     return ties + warnings
