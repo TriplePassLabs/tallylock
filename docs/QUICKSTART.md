@@ -13,11 +13,11 @@ With a supported interpreter and its venv support, create an isolated environmen
 ```sh
 /usr/bin/python3.12 -m venv .venv-tallylock
 . .venv-tallylock/bin/activate
-python -m pip install /absolute/path/to/tallylock-0.1.0a3-py3-none-any.whl
+python -m pip install /absolute/path/to/tallylock-0.1.0a4-py3-none-any.whl
 tallylock --version
 ```
 
-Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a3 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs.
+Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a4 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs.
 
 Run `tallylock doctor` to check the Python version, the `tallylock` on your PATH and the packaged data. It writes nothing and uses no network.
 
@@ -25,7 +25,7 @@ If [`uv`](https://docs.astral.sh/uv/pip/environments/) is already installed, it 
 
 ```sh
 uv venv --python /absolute/path/to/supported/python .venv-tallylock
-uv pip install --python .venv-tallylock/bin/python /absolute/path/to/tallylock-0.1.0a3-py3-none-any.whl
+uv pip install --python .venv-tallylock/bin/python /absolute/path/to/tallylock-0.1.0a4-py3-none-any.whl
 uv pip check --python .venv-tallylock/bin/python
 . .venv-tallylock/bin/activate
 tallylock --version
@@ -33,7 +33,7 @@ tallylock --version
 
 The console command works after activation even if the environment has no `pip` command. Do not use `sudo pip`.
 
-Alternatively install a reviewed source checkout with `python -m pip install /absolute/path/to/tallylock`. Installation may fetch dependencies. A fully offline installation needs a separately prepared wheelhouse containing TallyLock and all dependencies, then `python -m pip install --no-index --find-links /absolute/path/to/wheelhouse tallylock==0.1.0a3`. No unpublished PyPI release is assumed.
+Alternatively install a reviewed source checkout with `python -m pip install /absolute/path/to/tallylock`. Installation may fetch dependencies. A fully offline installation needs a separately prepared wheelhouse containing TallyLock and all dependencies, then `python -m pip install --no-index --find-links /absolute/path/to/wheelhouse tallylock==0.1.0a4`. No unpublished PyPI release is assumed.
 
 Once installed, this workflow runs in a fresh directory unrelated to any repository. It uses no model, API key or private service. `python -m tallylock` can replace `tallylock` in every command.
 
