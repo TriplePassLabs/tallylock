@@ -1,6 +1,6 @@
 {
   "format": "prove.testing-feedback.v1",
-  "candidate": {"version": "0.1.0a1", "commit": null, "distribution": null, "sha256": null},
+  "candidate": {"version": "0.1.0a2", "commit": null, "distribution": null, "sha256": null},
   "environment": {"project": "", "os": "", "architecture": "", "python": "", "install_command": "", "dependency_inventory": "", "offline_enforcement": ""},
   "checks": [
     {"id": "install", "status": "not_run", "commands": [], "exit_codes": [], "evidence": [], "notes": ""},

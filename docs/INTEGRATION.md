@@ -13,7 +13,7 @@ For outputs that already exist, describe the operation as retrospective sealing.
 {"evaluation_timing": "retrospective"}
 ```
 
-This is a structured, hashed self-declaration using the existing non-normative metadata field. Preserve any other metadata entries. It does not establish when the outputs were created or turn retrospective sealing into pre-execution preregistration. Version0.1.0a1 has no dedicated `--retrospective` flag or report field. Read the frozen manifest for this declaration; `inspect` does not dump arbitrary metadata.
+This is a structured, hashed self-declaration using the existing non-normative metadata field. Preserve any other metadata entries. It does not establish when the outputs were created or turn retrospective sealing into pre-execution preregistration. Version 0.1.0a2 has no dedicated `--retrospective` flag or report field. Read the frozen manifest for this declaration; `inspect` does not dump arbitrary metadata.
 
 `seal` maps data-only options directly to the store API: `--attempt ID`, `--outcome completed|failed|aborted|budget_exceeded`, `--reason TEXT`, `--events FILE`, `--roles FILE`, `--media-types FILE`, `--score-path REL`, `--aggregate FILE`, and `--metadata FILE`. Outcome defaults to completed and reason to absent. Unsuccessful outcomes require the reason and evidence expected by the protocol. See `prove COMMAND --help` for exact arguments.
 
@@ -38,7 +38,7 @@ That object is an example metrics artifact, not the `--aggregate` input. Write t
 
 `seal --artifacts outputs` copies those files into `receipt/artifacts`. Full verification checks that frozen copy. Moving, editing or deleting the original `outputs` directory afterward does not change the receipt's validity. Changing `receipt/artifacts` does. There is no `verify --artifacts` option to compare an external working directory. Use a new registration/receipt for a new experiment, or a separate receipt for each already declared attempt; do not overwrite sealed artifacts.
 
-The producer retains `.prove/staging` and its journal after a successful seal. These are durable recovery checkpoints, not a sign that the seal failed. Staging can contain another complete artifact copy, and retries can retain additional candidate stages, so account for their disk usage. Version0.1.0a1 has no automatic staging cleanup command. Keep the original producer state for retry and recovery.
+The producer retains `.prove/staging` and its journal after a successful seal. These are durable recovery checkpoints, not a sign that the seal failed. Staging can contain another complete artifact copy, and retries can retain additional candidate stages, so account for their disk usage. Version 0.1.0a2 has no automatic staging cleanup command. Keep the original producer state for retry and recovery.
 
 For a read-only portable receipt, include `manifest.json`, `result.json`, `records.jsonl`, the entire `artifacts/` tree and `proofs/` when present. The root `.prove/` directory is not needed for verification and is excluded from receipt identity. Omitting private state from a sharing copy is distinct from deleting recovery state in the producer's original receipt. Preserve any committed artifact directory named `.prove` inside `artifacts/`; only the receipt's root `.prove` is private state.
 

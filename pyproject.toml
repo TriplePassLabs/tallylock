@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tallylock"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Standalone evaluation receipts with independently checkable artifact and timestamp evidence"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"

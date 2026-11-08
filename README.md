@@ -8,20 +8,20 @@ TallyLock freezes evaluation plans and ordinary output files into standalone rec
 
 It binds an evaluation plan, recorded artifacts and reported results to commitments with optional OpenTimestamps evidence. Verification distinguishes artifact integrity from claims about execution, model identity, timing and scientific validity.
 
-Version `0.1.0a1` is an unreleased implementation candidate for Linux with Python 3.11 through 3.13. Use a supported interpreter and install the reviewed wheel in its own environment. The example below selects Python 3.12; substitute your supported interpreter when needed.
+Version `0.1.0a2` is an alpha release for Linux with Python 3.11 through 3.13. Use a supported interpreter and install it in its own environment. The example below selects Python 3.12; substitute your supported interpreter when needed.
 
 On Ubuntu or Debian, that interpreter needs its matching venv package before environment creation. Ubuntu 24.04 users selecting Python 3.12 need `python3.12-venv`. The [offline quickstart](docs/QUICKSTART.md) gives the prerequisite and an optional fallback when `uv` is already installed. See the [Ubuntu Python setup guide](https://ubuntu.com/developers/docs/howto/python-setup/) and [package record](https://packages.ubuntu.com/noble/python3.12-venv).
 
 ```sh
 python3.12 -m venv .venv-tallylock
 . .venv-tallylock/bin/activate
-python -m pip install /absolute/path/to/tallylock-0.1.0a1-py3-none-any.whl
+python -m pip install /absolute/path/to/tallylock-0.1.0a2-py3-none-any.whl
 tallylock --version
 ```
 
 From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies.
 
-Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a1 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
+Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a2 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
 
 The [offline quickstart](docs/QUICKSTART.md) uses only the installed CLI, a fresh manifest and an ordinary output directory. It needs no model, provider account, research checkout or hosted service. `python -m tallylock` can replace `tallylock` in every command.
 
