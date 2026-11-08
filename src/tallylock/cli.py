@@ -451,7 +451,13 @@ def _dispatch(args, report, phase):
         elif command in ('anchor', 'upgrade'):
             _ids(report, directory)
             report['local_state'] = 'sealed' if report['receipt_id'] is not None else 'registered'
-            targets = ('manifest', 'result') if args.target == 'all' else (args.target,)
+            # A registered receipt has no result yet, so 'all' means the manifest alone.
+            if args.target == 'result' and report['receipt_id'] is None:
+                raise _Shown('This receipt has no sealed result yet. Seal it first, or use --target manifest.', code=3)
+            if args.target == 'all':
+                targets = ('manifest', 'result') if report['receipt_id'] is not None else ('manifest',)
+            else:
+                targets = (args.target,)
             _anchor(pinned, targets, 'submit' if command == 'anchor' else 'upgrade', report, phase)
         elif command == 'recover-lock':
             from .filesystem import recover_lock

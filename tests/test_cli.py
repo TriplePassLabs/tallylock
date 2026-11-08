@@ -219,6 +219,22 @@ def test_explicit_timestamp_actions_dispatch_without_source(tmp_path, action):
     assert value['anchor_action'] == {'state': 'returned', 'report': {'targets': ['manifest'], 'state': 'pending'}}
 
 
+
+@pytest.mark.parametrize('action', ['anchor', 'upgrade'])
+def test_all_targets_on_a_registered_receipt_mean_the_manifest(tmp_path, action):
+    # A pre-registered receipt has no result yet; a plain anchor or upgrade must not fail on it.
+    manifest, receipt = tmp_path / 'manifest.json', tmp_path / 'receipt'
+    report('init', '--out', manifest, cwd=tmp_path)
+    report('pre-register', manifest, '--receipt', receipt, cwd=tmp_path)
+    patch = ("from tallylock import timestamping\n"
+             "def fake(receipt,*,targets): return {'targets':list(targets),'state':'pending'}\n"
+             f"timestamping.{'submit' if action == 'anchor' else 'upgrade'}=fake\n")
+    value = report(action, receipt, patch=patch)
+    assert value['anchor_action']['report']['targets'] == ['manifest']
+    failed = report(action, receipt, '--target', 'result', patch=patch, code=3)
+    assert failed['errors'][0]['message'] == 'This receipt has no sealed result yet. Seal it first, or use --target manifest.'
+
+
 def test_recovery_commands_and_export_dispatch(tmp_path):
     _, receipt, outputs, _, sealed = generic(tmp_path)
     (receipt / 'result.json').unlink()
