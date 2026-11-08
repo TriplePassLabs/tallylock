@@ -22,9 +22,16 @@ COMMANDS = {'init', 'pre-register', 'seal', 'anchor', 'upgrade', 'verify', 'insp
             'board', 'compare', 'capabilities', 'agent-guide'}
 
 
+class _Formatter(argparse.HelpFormatter):
+    # Python 3.14 probes stdout for color on every formatter, which fails once stdout is closed.
+    def _set_color(self, color, **kwargs):
+        super()._set_color(False, **kwargs)
+
+
 class _Parser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         kwargs['allow_abbrev'] = False
+        kwargs.setdefault('formatter_class', _Formatter)
         super().__init__(*args, **kwargs)
 
     def error(self, message):
