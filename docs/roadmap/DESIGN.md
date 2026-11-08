@@ -29,9 +29,9 @@ The package manager owns the executable, Python environment and installation des
 Candidate installation examples, using a reviewed local wheel and an already installed package manager:
 
 ```sh
-pipx install --python python3.12 /absolute/path/to/tallylock-0.1.0a2-py3-none-any.whl
+pipx install --python python3.12 /absolute/path/to/tallylock-0.1.0a3-py3-none-any.whl
 # Alternative, not a second required installation:
-uv tool install --python /usr/bin/python3.12 /absolute/path/to/tallylock-0.1.0a2-py3-none-any.whl
+uv tool install --python /usr/bin/python3.12 /absolute/path/to/tallylock-0.1.0a3-py3-none-any.whl
 ```
 
 These illustrative Linux package-manager paths require qualification against the candidate before advertising them as observed successes. `/usr/bin/python3.12` is an example of an installed supported interpreter, not a universal path. Existing venv instructions remain supported. Do not assume PyPI publication or silently download a different interpreter. The eventual published package uses its approved version in equivalent install instructions. Users selecting a custom executable/environment destination receive the selected manager's own documented settings. No `sudo pip`, curl-to-shell bootstrap or self-relocation. Current package metadata says Python >=3.11 without an upper bound, while observed support is only 3.11–3.13; phase 1 must explicitly test and document unsupported-interpreter behavior rather than treating the metadata as qualification.
