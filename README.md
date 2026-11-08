@@ -1,29 +1,53 @@
 # TallyLock
 
-TallyLock was named Prove until 2026-11-07. The command is `tallylock` and the package is `tallylock`. Protocol v1 wire identifiers keep their original `prove.` prefix (for example `prove.manifest.v1`), and receipts keep their `.prove/` state directory, so existing receipt IDs and anchored timestamps stay valid.
+**Lock the plan. Tally every run. See the real score.**
 
-TallyLock freezes evaluation plans and ordinary output files into standalone receipts. Its Python CLI verifies byte integrity offline and separates that evidence from reported scores, model identity and execution claims. Developed by [TriplePass Labs](https://github.com/TriplePassLabs). Created and maintained by [Christopher Ayers](https://github.com/BrianBoitano).
+When someone shares an AI evaluation result, readers ask three things. How many tries did it take? Is the difference just noise? Is it comparable to the other numbers? TallyLock records every attempt, including failures, and answers all three in one claim line that anyone can recheck:
 
-[Lab website](https://triplepasslabs.com) · [GitHub organization](https://github.com/TriplePassLabs) · [Founder profile](https://github.com/BrianBoitano)
+```text
+0.742 best of 14 runs; adjusted 0.712 ± 0.011 (95% CI, 12 completed, 2 failed); plan 3f2a9c1d (1 of 3 in repo); ledger 9b1e04aa; tallylock check
+```
 
-It binds an evaluation plan, recorded artifacts and reported results to commitments with optional OpenTimestamps evidence. Verification distinguishes artifact integrity from claims about execution, model identity, timing and scientific validity.
+Free and open source (Apache-2.0). Built by [TriplePass Labs](https://triplepasslabs.com/tallylock/). Created and maintained by [Christopher Ayers](https://github.com/BrianBoitano).
 
-Version `0.1.0a3` is an alpha release for Linux with Python 3.11 through 3.14. Use a supported interpreter and install it in its own environment. The example below selects Python 3.12; substitute your supported interpreter when needed.
+[Product page](https://triplepasslabs.com/tallylock/) · [PyPI](https://pypi.org/project/tallylock/) · [Releases](https://github.com/TriplePassLabs/tallylock/releases) · [GitHub organization](https://github.com/TriplePassLabs)
 
-On Ubuntu or Debian, that interpreter needs its matching venv package before environment creation. Ubuntu 24.04 users selecting Python 3.12 need `python3.12-venv`. The [offline quickstart](docs/QUICKSTART.md) gives the prerequisite and an optional fallback when `uv` is already installed. See the [Ubuntu Python setup guide](https://ubuntu.com/developers/docs/howto/python-setup/) and [package record](https://packages.ubuntu.com/noble/python3.12-venv).
+## Install
 
 ```sh
-python3.12 -m venv .venv-tallylock
-. .venv-tallylock/bin/activate
-python -m pip install /absolute/path/to/tallylock-0.1.0a3-py3-none-any.whl
+pipx install tallylock        # or: uv tool install tallylock
 tallylock --version
 ```
 
-From a reviewed source checkout, `python -m pip install .` works in the same environment. Installation may fetch dependencies.
+Version `0.1.0a3` is an alpha for Linux with Python 3.11 through 3.14, published with trusted publishing and signed provenance. On Windows, use WSL or a Linux container: commands that write files need Linux, and `tallylock doctor` says so. For offline installs from a reviewed wheel or source checkout, see the [quickstart](docs/QUICKSTART.md). On Ubuntu or Debian, a plain venv needs the matching venv package, for example `python3.12-venv`.
 
-Install from PyPI: `pipx install tallylock` or `uv tool install tallylock`. Version 0.1.0a3 is published with trusted publishing and signed provenance. The wheel and source steps above still work for offline or reviewed installs. Distribution acceptance and release status are recorded in [the readiness audit](docs/READINESS.md).
+## Record every run
 
-The [offline quickstart](docs/QUICKSTART.md) uses only the installed CLI, a fresh manifest and an ordinary output directory. It needs no model, provider account, research checkout or hosted service. `python -m tallylock` can replace `tallylock` in every command.
+Run it inside a git repository. Your eval prints a line such as `tallylock: score=0.74` so TallyLock can read the score.
+
+```sh
+tallylock run --repeat 5 -- python eval.py --seed {seed}   # records every attempt, failures included
+tallylock score                                            # best score, real score with its 95% interval, claim line
+tallylock check "<claim line>"                             # anyone recomputes it from the ledger
+```
+
+The first run locks the plan: the commit, the command and the config files. Changing any of them starts a new plan, and the old one stays visible. The ledger lives in `.tallylock/`. Commit it when you want others to check your claim. `run` exits with your command's own exit code, so a failing eval still fails your CI.
+
+Each ledger update gets an instant RFC 3161 timestamp from two public services and a Bitcoin timestamp through OpenTimestamps a few hours later. `tallylock refresh` finishes pending proofs. See [the quickstart](docs/QUICKSTART.md#record-every-run-and-get-the-real-score) and [the method](docs/METHODS.md).
+
+## More commands
+
+- `tallylock compare A B` says whether two results used the same dataset, harness, prompt and decoding settings, and whether the gap is just noise. It never ranks across a mismatch.
+- `tallylock verify RECEIPT --online` and `tallylock check --online` check Bitcoin timestamps without running a node. The block and the blocks after it are checked against Bitcoin's real difficulty, and two public services must agree.
+- `tallylock export`, `registry` and `board` publish a static Receipts Board where every entry is rechecked.
+- `tallylock adapters import` reads Inspect AI logs and proofbundle files. `tallylock export --format intoto` writes statements cosign can sign.
+- `tallylock capabilities --json` and `tallylock agent-guide` let AI assistants drive the CLI safely.
+
+Output is plain language on a terminal and one JSON object per line when piped. Force either with `--human` or `--json`. Exit codes: 0 success, 2 invalid input, 3 insufficient evidence, 4 unsupported evidence, 5 operational failure, 130 interrupted. See [how it compares](docs/COMPARISON.md) to other tools and the [receipt request](docs/RECEIPT_REQUEST.md) paragraph for reviewers.
+
+## Receipts for any output files
+
+TallyLock can also freeze a plan and ordinary output files into a standalone receipt that verifies offline:
 
 ```sh
 tallylock init --out manifest.json --name "My evaluation"
@@ -34,38 +58,22 @@ tallylock seal receipt --artifacts outputs
 tallylock verify receipt
 ```
 
-Edit the manifest before preregistration. Run your external evaluation program yourself and pass its output directory to `seal`. TallyLock never launches a model or executes a scorer named in metadata. See [generic integration](docs/INTEGRATION.md) for explicit score/trace options, bounded reports and recovery.
+Run your evaluation yourself and pass its output directory to `seal`. TallyLock never launches a model or runs a scorer named in a receipt. Anchoring is explicit: `tallylock anchor receipt`, then `tallylock upgrade receipt` as calendars confirm. Plain `verify` checks integrity offline and reports the timestamp as not checked. Add `--online` to check it against public block headers, or `--policy anchored --chain-cache FILE` to check against your own node's data. See [generic integration](docs/INTEGRATION.md) for score and trace options, reports and recovery.
 
-Anchoring is explicit: `tallylock anchor receipt`, then `tallylock upgrade receipt` as calendars gain attestations. Submission and pending proofs are not completed anchoring. Plain `tallylock verify receipt` checks integrity and reports the timestamp as not checked, exiting 0 when integrity passes. With `--chain-cache FILE` it also runs the anchored check. `--policy anchored` is the strict form: it requires qualifying Bitcoin attestations and an explicitly selected local chain cache, and exits 3 without them. Verification never contacts a node or calendar. Independently assess the cache's provenance and freshness.
+## What a result proves
 
-Output is one JSON object per stdout line when piped and a short plain-language summary on a terminal. Force either with `--json` or `--human` (not both). `tallylock doctor [RECEIPT]` checks the installation and a receipt's timestamp state without writing or using the network. Statuses are 0 for the requested action/check, 2 invalid input, 3 insufficient evidence, 4 unsupported evidence, 5 operational failure and 130 interruption. A returned timestamp action can still be pending or retry-wait. After optional anchoring fails, completed local state and IDs remain in the report. Resume with `anchor`/`upgrade` without the original outputs.
+It proves that the plan, the attempts and their outputs existed by a stated time and were not changed later, and that the score counts every recorded attempt. It does not prove that the evaluation ran honestly, which model was used, or that no attempts happened outside the tool. TallyLock records evidence. It does not certify results.
 
-Static examples and canonical conformance assets ship under `tallylock/data/examples/basic` and `tallylock/data/conformance`, accessible through `importlib.resources`. Basic use requires no optional harness importer.
+## Documentation
 
-- [Project plan](PLAN.md): scope, protocol decisions, milestones and release gates.
-- [Threat model](docs/THREAT_MODEL.md): attacks, defenses and remaining trust.
-- [Acceptance tests](docs/ACCEPTANCE.md): tests required before implementation claims.
-- [Sources and alternatives](docs/SOURCES.md): primary references and reuse decisions.
-- [Review log](docs/reviews/REVIEW_LOG.md): critiques and their disposition.
-- [Flagship roadmap](docs/roadmap/README.md): setup choices, AI instructions and twenty staged features. Phase 1 is built (see [the Phase 1 plan](docs/roadmap/PHASE1_RECUT.md)). Later phases are proposals and are not implemented.
+- [Quickstart](docs/QUICKSTART.md) and [method](docs/METHODS.md)
+- [Protocol](docs/PROTOCOL.md), [threat model](docs/THREAT_MODEL.md) and [security policy](SECURITY.md)
+- [Comparison with other tools](docs/COMPARISON.md) and [sources](docs/SOURCES.md)
+- [Roadmap](docs/roadmap/README.md): Phase 1 is built ([Phase 1 plan](docs/roadmap/PHASE1_RECUT.md)). Later phases are proposals.
+- [Readiness audit](docs/READINESS.md), [acceptance tests](docs/ACCEPTANCE.md), [project plan](PLAN.md) and [review log](docs/reviews/REVIEW_LOG.md)
 
-## License
+## Name and license
+
+TallyLock was named Prove until 2026-11-07. Protocol v1 wire identifiers keep their original `prove.` prefix (for example `prove.manifest.v1`), and receipts keep their `.prove/` state directory, so existing receipt IDs and timestamps stay valid.
 
 Licensed under [Apache-2.0](LICENSE). Copyright 2026 Christopher Ayers.
-
-## Record every run
-
-```sh
-tallylock run --repeat 5 -- python eval.py --seed {seed}
-tallylock score
-```
-
-Every attempt is recorded, including failures. `score` reports the best result, the real score with its range, and a claim line others can check with `tallylock check`. See [the quickstart](docs/QUICKSTART.md#record-every-run-and-get-the-real-score) and [the method](docs/METHODS.md).
-
-More: check timestamps without running a node (`verify --online`), compare two results for setup and noise (`compare`), and publish a static Receipts Board from a registry of plans (`registry`, `board`). TallyLock also reads Inspect AI logs and proofbundle files, and exports in-toto statements. See [the quickstart](docs/QUICKSTART.md#check-timestamps-compare-results-and-publish-a-board) and [how it compares](docs/COMPARISON.md).
-
-## What a receipt means
-
-A valid completed timestamp establishes that a commitment existed by a Bitcoin block. Artifact hashes reveal changes to committed bytes. Neither establishes that an evaluator ran honestly, used the claimed model, disclosed all attempts, or produced a scientifically sound result.
-
-TallyLock works alongside evaluation harnesses. A preregistration ID alone establishes no independently witnessed chronology. External research experiments remain separate from the protocol's cryptographic checks.
