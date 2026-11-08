@@ -8,7 +8,7 @@ import shutil
 import sys
 import sysconfig
 
-SUPPORTED = ((3, 11), (3, 14))
+SUPPORTED = ((3, 11), (3, 15))
 REQUIRED_DATA = ('data/schemas/protocol-v1.json', 'data/conformance/index.json',
                  'data/examples/basic/manifest.json')
 
@@ -21,9 +21,17 @@ def check_python(version=None):
     version = tuple(sys.version_info[:3] if version is None else version)
     text = '.'.join(str(part) for part in version[:3])
     if SUPPORTED[0] <= version[:2] < SUPPORTED[1]:
-        return _check('TL-DOC-PYTHON-OK', 'ok', f'Python {text} is in the tested range (3.11 to 3.13).')
-    return _check('TL-DOC-PYTHON-RANGE', 'fail', f'Python {text} is outside the tested range (3.11 to 3.13).',
-                  'Install TallyLock with Python 3.11, 3.12 or 3.13.')
+        return _check('TL-DOC-PYTHON-OK', 'ok', f'Python {text} is in the tested range (3.11 to 3.14).')
+    return _check('TL-DOC-PYTHON-RANGE', 'fail', f'Python {text} is outside the tested range (3.11 to 3.14).',
+                  'Install TallyLock with Python 3.11, 3.12, 3.13 or 3.14.')
+
+
+def check_platform(names=None):
+    names = dir(os) if names is None else names
+    if all(flag in names for flag in ('O_DIRECTORY', 'O_NOFOLLOW', 'O_NONBLOCK')):
+        return _check('TL-DOC-PLATFORM-OK', 'ok', 'This system supports safe file writes.')
+    return _check('TL-DOC-PLATFORM', 'fail', f'This system ({sys.platform}) cannot do safe file writes, so init, seal, run '
+                  'and other commands that write files will fail.', 'Use Linux, or WSL on Windows.')
 
 
 def console_candidates():
@@ -83,7 +91,7 @@ def unreadable(receipt):
 
 
 def install_checks():
-    return [check_python(), check_path(shutil.which('tallylock'), console_candidates()), check_data()]
+    return [check_python(), check_platform(), check_path(shutil.which('tallylock'), console_candidates()), check_data()]
 
 
 def report(checks):

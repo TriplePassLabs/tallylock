@@ -37,6 +37,8 @@ def _command(name, summary, outputs, effects, *, arguments=(), options=(), statu
 
 _RECEIPT = _arg("receipt", "Receipt directory")
 _ANCHOR = _opt("--anchor", "Submit to OpenTimestamps calendars after writing", choices=["ots"])
+_HEAD_ONLINE = _opt("--online", "Check Bitcoin proofs of ledger heads against two public providers", value=False)
+_HEAD_NETWORK = "Only with --online: two public Bitcoin block header services."
 _TARGET = _opt("--target", "Which frozen core to act on", choices=["all", "manifest", "result"])
 _COMMANDS = [
     _command("init", "Create a fresh editable manifest.", {"stdout": ["prove.command.v1"], "files": ["manifest JSON at --out"]},
@@ -65,11 +67,12 @@ _COMMANDS = [
     _command("upgrade", "Fetch completed timestamp proofs for frozen cores.", {"stdout": ["prove.command.v1"]},
              {"reads": "The receipt.", "writes": "Updated timestamp proof files in the receipt.",
               "network": "OpenTimestamps calendars."}, arguments=[_RECEIPT], options=[_TARGET]),
-    _command("verify", "Read-only offline verification of a receipt or inclusion package.",
-             {"stdout": ["prove.verification.v1"]}, {"reads": "The receipt or package, and an optional chain cache."},
+    _command("verify", "Read-only verification of a receipt or inclusion package. Offline unless --online is given.",
+             {"stdout": ["prove.verification.v1"]}, {"reads": "The receipt or package, and an optional chain cache.",
+                                                       "network": _HEAD_NETWORK},
              arguments=[_arg("receipt", "Receipt directory", required=False)],
              options=[_opt("--inclusion", "Inclusion package file to verify instead"),
-                      _opt("--offline", "Accepted explicitly; verification is always offline", value=False),
+                      _opt("--offline", "Make no network requests (the default)", value=False),
                       _opt("--policy", "Evidence policy", choices=["anchored", "integrity-only", "provider-pow"]),
                       _opt("--online", "Check timestamps against two public providers", value=False),
                       _opt("--evidence", "Saved provider evidence to re-check offline"),
@@ -114,12 +117,19 @@ _COMMANDS = [
                       _opt("--setup", "Setup file: dataset, harness, model and decoding settings"),
                       _opt("--no-tsa", "Skip the instant timestamp services", value=False),
                       _opt("--tsa", "Timestamp service URL; repeat for more")],
-             note="This runs the command you give it. Run only commands you trust."),
+             note="This runs the command you give it. Run only commands you trust. "
+                  "When your command fails, TallyLock records it and then exits with the command's own exit code, "
+                  "or 128 plus the signal number if a signal stopped it. With --repeat, every attempt runs and the "
+                  "exit code is the first failing attempt's. TallyLock's own errors keep the codes listed above."),
     _command("score", "Show the real score and claim line for a plan.", {"stdout": ["tallylock.score.v1"]},
-             {"reads": "The git repository's plans."}, options=[_opt("--plan", "Plan ID prefix")]),
+             {"reads": "The git repository's plans.", "network": _HEAD_NETWORK},
+             options=[_opt("--plan", "Plan ID prefix"), _HEAD_ONLINE],
+             note="With --online, exit code 3 means a completed timestamp proof failed its check."),
     _command("check", "Check a pasted claim line against this repository.", {"stdout": ["tallylock.claim-check.v1"]},
-             {"reads": "The git repository's plans."}, arguments=[_arg("claim", "The claim line, in quotes")],
-             note="Exit code 3 means the claim did not match or the plan was not found."),
+             {"reads": "The git repository's plans.", "network": _HEAD_NETWORK},
+             arguments=[_arg("claim", "The claim line, in quotes")], options=[_HEAD_ONLINE],
+             note="Exit code 3 means the claim did not match, the plan was not found, or, with --online, "
+                  "a completed timestamp proof failed its check."),
     _command("refresh", "Recover, re-stamp and upgrade the timestamps of ledger heads.", {"stdout": ["tallylock.refresh.v1"]},
              {"reads": "The repository's plans.", "writes": "Timestamp files in .tallylock/plans.",
               "network": "Timestamp services and OpenTimestamps calendars."}, options=[_opt("--plan", "Plan ID prefix")]),

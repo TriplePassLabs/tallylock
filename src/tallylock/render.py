@@ -120,11 +120,14 @@ def _doctor(report, context):
 
 def _run(report):
     how = 'finished' if report['outcome'] == 'completed' else f"failed ({report['reason']})"
+    if report['exit_code'] < 0:
+        how = f"was stopped by signal {-report['exit_code']}"
     score = report['score']
+    passed = [f"Exit code {report['code']}, from your command."] if report['code'] else []
     if report.get('repeat'):
         done = sum(item['outcome'] == 'completed' for item in report['repeat'])
         return [f"Ran {len(report['repeat'])} times: {done} finished, {len(report['repeat']) - done} failed.",
-                f"This plan now has {report['seq']} recorded attempts.", 'Next: tallylock score']
+                f"This plan now has {report['seq']} recorded attempts.", *passed, 'Next: tallylock score']
     lines = [f"Run {report['seq']} {how}. Recorded as attempt {report['seq']} of this plan.",
              f"Score: {score['numerator']}/{score['denominator']}." if score else
              "Score: none found. Print a line like 'tallylock: score=0.74' to record one."]
@@ -132,7 +135,33 @@ def _run(report):
     lines.append('Timestamp: requested.' if report['anchor'].get('submitted') else
                  'Timestamp: not requested.' if state == 'not_requested' else
                  'Timestamp: could not be requested now. The run is still recorded.')
+    lines += passed
     lines.append('Next: tallylock score')
+    return lines
+
+
+def _timestamps(report):
+    if 'timestamps' not in report:
+        return []
+    checked = report['timestamps']
+    if not checked['heads']:
+        return ['Timestamps: this plan has no Bitcoin proofs to check.']
+    lines = []
+    for item in checked['heads']:
+        seq = item['seq']
+        if item['state'] == 'checked':
+            lines.append(f"Head {seq}: checked. {item['confirmations']} later blocks confirm it.")
+        elif item['state'] == 'pending':
+            lines.append(f"Head {seq}: Bitcoin proof pending, run tallylock refresh.")
+        elif item['state'] == 'too_few_confirmations':
+            lines.append(f"Head {seq}: only {item['confirmations']} blocks confirm it so far, "
+                         f"{checked['minimum_confirmations']} needed. Check again later.")
+        elif item['state'] == 'skipped':
+            lines.append(f"Head {seq}: not checked, {item['reason']}.")
+        else:
+            lines.append(f"Head {seq}: timestamp check failed. {item['reason']}")
+    if checked['providers'] is not None:
+        lines.append('Checked against two public block services. Full network consensus was not checked.')
     return lines
 
 
@@ -147,12 +176,12 @@ def _score(report):
         lines.append(f"This repository has {report['plans_in_repo']} plans. Each config change starts a new one.")
     if report['claim']:
         lines += ['Claim line to paste:', report['claim']]
-    return lines
+    return lines + _timestamps(report)
 
 
 def _check(report):
     if report['verdict'] == 'match':
-        return ['Claim checked: every number matches the recorded runs.']
+        return ['Claim checked: every number matches the recorded runs.'] + _timestamps(report)
     if report['verdict'] == 'not_found':
         return ['Claim not found in this repository. It cannot be checked here.']
     lines = ['Claim does not match the recorded runs:']

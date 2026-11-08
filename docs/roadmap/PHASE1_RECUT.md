@@ -1,6 +1,6 @@
 # Phase 1: the neutral scoreboard (revised 2026-11-07)
 
-Status: planning draft, not implemented. This replaces the eight-feature Phase 1 in ROADMAP.md. It was rewritten after competitor validation showed that run wrappers, pre-registration and Merkle-plus-timestamp receipts already exist in small open-source tools, then revised the same day for simplicity and three reader questions. Product: TallyLock. Package and command: `tallylock`.
+Status: built. All seven items shipped in tallylock 0.1.0a2 on PyPI on 2026-11-07. The exit test below is still open. This replaces the eight-feature Phase 1 in ROADMAP.md. It was rewritten after competitor validation showed that run wrappers, pre-registration and Merkle-plus-timestamp receipts already exist in small open-source tools, then revised the same day for simplicity and three reader questions. Product: TallyLock. Package and command: `tallylock`.
 
 ## Positioning
 

@@ -1,6 +1,6 @@
 # Offline quickstart
 
-The supported runtime target is Linux with Python 3.11 through 3.13. This is an unreleased candidate; see the readiness audit for observed gates. Select one of those interpreters explicitly; a distro default may be newer and unsupported. On Ubuntu or Debian, install the matching venv package before the primary setup path. For example, Ubuntu 24.04 users selecting Python 3.12 need `python3.12-venv`:
+The supported runtime target is Linux with Python 3.11 through 3.14. This is an alpha release; see the readiness audit for observed gates. Select one of those interpreters explicitly; a distro default may be newer and unsupported. On Ubuntu or Debian, install the matching venv package before the primary setup path. For example, Ubuntu 24.04 users selecting Python 3.12 need `python3.12-venv`:
 
 ```sh
 sudo apt install python3.12-venv

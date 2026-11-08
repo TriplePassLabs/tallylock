@@ -61,7 +61,7 @@ def test_every_command_documents_effects_formats_and_exit_codes():
         for effect in command["effects"].values():
             assert isinstance(effect, str) and effect
     effects = {c["name"]: c["effects"] for c in data["commands"]}
-    assert "network" not in effects["verify"] and "network" not in effects["check"]
+    assert effects["verify"]["network"].startswith("Only with --online") and effects["check"]["network"].startswith("Only with --online")
     assert "writes" not in effects["score"] and "writes" not in effects["inspect"]
     assert "network" in effects["run"]
 

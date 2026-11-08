@@ -86,7 +86,7 @@ def _parser():
         action = commands.add_parser(name, help='Explicit timestamp action on frozen cores')
         action.add_argument('receipt', type=_path)
         action.add_argument('--target', choices=['all', 'manifest', 'result'], default='all')
-    verify = commands.add_parser('verify', help='Read-only offline verification')
+    verify = commands.add_parser('verify', help='Read-only verification, offline unless --online')
     source = verify.add_mutually_exclusive_group(required=True)
     source.add_argument('receipt', nargs='?', type=_path)
     source.add_argument('--inclusion', type=_path)
@@ -132,8 +132,10 @@ def _parser():
     run.add_argument('argv', nargs=argparse.REMAINDER)
     score = commands.add_parser('score', help='Show the real score and claim line for a plan')
     score.add_argument('--plan')
+    score.add_argument('--online', action='store_true', help='Check Bitcoin proofs of ledger heads against two public providers')
     check = commands.add_parser('check', help='Check a pasted claim line against this repository')
     check.add_argument('claim')
+    check.add_argument('--online', action='store_true', help='Check Bitcoin proofs of ledger heads against two public providers')
     refresh = commands.add_parser('refresh', help='Recover, re-stamp and upgrade ledger timestamps')
     refresh.add_argument('--plan')
     export = commands.add_parser('export', help='Copy one plan into a bundle, or write an in-toto statement')
@@ -515,7 +517,10 @@ def _tally(command, args, phase):
         results = [ledger.run_attempt(plan, outputs=args.outputs, score_file=args.score_file, stdout=stdout,
                                       anchor=not args.no_anchor, tsa=tsa, tsas=args.tsa or None)
                    for _ in range(args.repeat)]
-        report = {**results[-1], 'code': 0}
+        # Like time or uv run: pass on the first failing exit code, 128 plus the signal for a killed command.
+        failed = [item['exit_code'] for item in results if item['exit_code']]
+        code = 0 if not failed else 128 - failed[0] if failed[0] < 0 else failed[0]
+        report = {**results[-1], 'code': code}
         if args.repeat > 1:
             report['repeat'] = [{key: item[key] for key in ('seq', 'outcome', 'exit_code', 'score')} for item in results]
         return report
@@ -533,8 +538,11 @@ def _tally(command, args, phase):
         overview = tally.repo_summary(repo)
         claim = tally.format_claim(summary, overview) if summary['attempts'] else None
         half = tally._fields(summary, overview['count'])['half'] if summary['attempts'] else None
-        return {'format': 'tallylock.score.v1', 'code': 0, 'plan': summary, 'half_display': half,
-                'plans_in_repo': overview['count'], 'claim': claim}
+        report = {'format': 'tallylock.score.v1', 'code': 0, 'plan': summary, 'half_display': half,
+                  'plans_in_repo': overview['count'], 'claim': claim}
+        if args.online:
+            _online(report, repo, plan_id)
+        return report
     if command == 'refresh':
         plans = [_plan_id(repo, args.plan)] if args.plan else ledger.list_plans(repo)
         results = []
@@ -561,7 +569,17 @@ def _tally(command, args, phase):
         result = compare.compare((repo, _plan_id(repo, args.left)), (repo, _plan_id(repo, args.right)))
         return {**result, 'code': 0}
     verdict = tally.check_claim(repo, args.claim)
-    return {**verdict, 'code': 0 if verdict['verdict'] == 'match' else 3}
+    report = {**verdict, 'code': 0 if verdict['verdict'] == 'match' else 3}
+    if args.online and verdict['verdict'] == 'match':
+        _online(report, repo, verdict['plan_id'])
+    return report
+
+
+def _online(report, repo, plan_id):
+    from . import ledger
+    report['timestamps'] = ledger.check_heads_online(repo, plan_id)
+    if any(item['state'] in ('failed', 'too_few_confirmations') for item in report['timestamps']['heads']):
+        report['code'] = 3
 
 
 def _plan_id(repo, prefix):
@@ -682,7 +700,8 @@ def _diagnostic(error, stage):
         if prefix in {'duplicate JSON key', 'unsupported format', 'unsupported profile',
                       'unsupported tree_algorithm', 'unsupported kind', 'undeclared attempt',
                       'invalid JSON', 'format must be a string', 'JSON floating-point values are not permitted',
-                      'JSON integers must be within the safe integer range', 'JSON nesting exceeds 64 levels'}:
+                      'JSON integers must be within the safe integer range', 'JSON nesting exceeds 64 levels',
+                      'TallyLock writes files only on Linux. On Windows, use WSL or a Linux container'}:
             message = prefix
         else:
             match = re.fullmatch(r'invalid (?:manifest|result|event|inclusion|chain|fixtureDataset|fixtureScores|inventory entry) at (.+)', prefix)

@@ -213,10 +213,11 @@ def test_python_range_diagnostics():
     assert doctor.check_python((3, 12, 1))['state'] == 'ok'
     assert doctor.check_python((3, 11, 0))['state'] == 'ok'
     low = doctor.check_python((3, 10, 9))
-    high = doctor.check_python((3, 14, 0))
+    high = doctor.check_python((3, 15, 0))
     assert low['id'] == high['id'] == 'TL-DOC-PYTHON-RANGE'
     assert low['state'] == high['state'] == 'fail'
     assert doctor.check_python((3, 12, 1))['id'] == 'TL-DOC-PYTHON-OK'
+    assert doctor.check_python((3, 14, 0))['state'] == 'ok'
 
 
 def test_data_diagnostics(tmp_path):
@@ -317,7 +318,7 @@ def test_timestamp_state_mapping():
 
 def test_requires_python_range():
     text = (ROOT / 'pyproject.toml').read_text()
-    assert 'requires-python = ">=3.11,<3.14"' in text
+    assert 'requires-python = ">=3.11,<3.15"' in text
 
 
 def test_release_workflow_uses_trusted_publishing():

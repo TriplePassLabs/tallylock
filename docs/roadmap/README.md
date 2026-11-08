@@ -46,6 +46,6 @@ Each catalog entry records existing foundations, new behavior, user value, accep
 
 The five-minute setup and pilot-completion measures are targets, not measured results. Linux/Python3.11-3.13 is the currently qualified platform. The first useful alpha does not wait for all twenty features or managed-node installation.
 
-Current implementation instructions remain in the [quickstart](https://github.com/TriplePassLabs/tallylock/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/QUICKSTART.md). The [current protocol](https://github.com/TriplePassLabs/tallylock/blob/02f7c642ea17748e0cb8637b2e7a56a59f0959bd/docs/PROTOCOL.md) remains in force until an explicitly approved revision replaces a contract. Proposed commands and public-provider verification in these design documents are not available in the frozen0.1.0a1 runtime.
+Current instructions are in the [quickstart](../QUICKSTART.md), and the [protocol](../PROTOCOL.md) remains in force until an explicitly approved revision replaces a contract. Phase 1 of this roadmap shipped in 0.1.0a2; see [the Phase 1 plan](PHASE1_RECUT.md). Commands proposed for later phases in these design documents are not implemented.
 
 Design reviewed with GPT-6 Astra and the main session on2026-11-07. The proposal retains immutable receipts and the offline verifier; implementation requires the agreed next phase's detailed contracts and tests.

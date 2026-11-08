@@ -572,6 +572,61 @@ def verify_anchor(repo: Path, plan_id: str, seq: int, *, chain_cache: dict | Non
     return {"seq": seq, "head_sha256": head, **result}
 
 
+def check_heads_online(repo: Path, plan_id: str, *, minimum_confirmations: int = 6) -> dict:
+    """Check completed ledger-head proofs against two public header providers; pending proofs only report."""
+    from . import headers
+    load_plan(repo, plan_id)
+    _, lines = _read(repo, plan_id)
+    directory = Path(repo)/".tallylock"/"plans"/plan_id
+    found = sorted((int(match.group(1)), path) for path in directory.iterdir()
+                   if (match := _PROOF.fullmatch(path.name)) and int(match.group(1)) <= len(lines))
+    heads, heights = [], set()
+    # Newest heads first: they cover every earlier entry, and one provider check takes at most 16 blocks.
+    for seq, path in reversed(found):
+        item = {"seq": seq, "head_sha256": hashlib.sha256(lines[seq - 1]).hexdigest(), "state": "pending",
+                "height": None, "confirmations": None, "reason": None}
+        data = None
+        try:
+            _require(path.stat().st_size <= anchors.MAX_PROOF_BYTES, "ledger head proof exceeds its byte limit")
+            data = path.read_bytes()
+            attested = anchors.inspect(data, item["head_sha256"])["bitcoin_heights"]
+        except TallyLockError as error:
+            item.update(state="failed", reason=error.message)
+        else:
+            if attested and len(heights | set(attested)) > headers.MAX_HEIGHTS:
+                item.update(state="skipped", reason="too many separate blocks to check at once")
+            elif attested:
+                heights.update(attested)
+                item["state"] = "to_check"
+        heads.append((item, data))
+    view = providers = None
+    try:
+        if heights:
+            checked = headers.check(headers.observe(sorted(heights)))
+            view, providers = checked.view, checked.summary
+    except TallyLockError as error:
+        for item, _ in heads:
+            if item["state"] == "to_check":
+                item.update(state="failed", reason=error.message)
+    for item, data in heads:
+        if item["state"] != "to_check":
+            continue
+        try:
+            result = anchors.verify(data, item["head_sha256"], view, minimum_confirmations=minimum_confirmations)
+        except TallyLockError as error:
+            item.update(state="failed", reason=error.message)
+            continue
+        item.update(height=result["height"], confirmations=result["confirmations"])
+        if result["state"] == "anchored":
+            item["state"] = "checked"
+        elif result["state"] == "insufficient_confirmations":
+            item["state"] = "too_few_confirmations"
+        else:
+            item.update(state="failed", reason="the providers do not have the block named in the proof")
+    return {"format": "tallylock.head-timestamps.v1", "minimum_confirmations": minimum_confirmations,
+            "providers": providers, "heads": sorted((item for item, _ in heads), key=lambda item: item["seq"])}
+
+
 def verify_ledger(repo: Path, plan_id: str, *, chain_cache: dict | None = None,
                   minimum_confirmations: int = 6) -> dict:
     """Recheck the chain, contiguity, every attempt receipt and any stored head proofs."""

@@ -97,8 +97,10 @@ def _html(rows, excluded, groups) -> str:
                      '<th>Failed</th><th>Trust</th><th>Source</th></tr></thead>\n<tbody>\n')
         for row in rows:
             links = "".join(f' <a href="{_cell(link)}" rel="noopener nofollow">link</a>' for link in row["links"])
-            warning = ('<div class="warn">Other plans from the same repo are not part of this entry.</div>'
-                       if row["other_plans_not_in_bundle"] else "")
+            # The locked plan number proves earlier plans exist; a larger claimed count alone is not checked.
+            number = tally.parse_claim(row["claim"])["plan_number"]
+            warning = (f'<div class="warn">This is plan {number} from its repo. '
+                       'The earlier plans are not part of this entry.</div>' if number > 1 else "")
             parts.append(
                 f'<tr><td><strong>{_cell(row["title"])}</strong>{links}'
                 f'<div class="claim">{_cell(row["claim"])}</div>{warning}'
@@ -109,6 +111,9 @@ def _html(rows, excluded, groups) -> str:
                 f'<td data-label="Trust"><span class="tag">{_cell(row["trust"])}</span></td><td data-label="Source">{_cell(row["source"])}'
                 f'<div class="claim">by {_cell(row["submitted_by"])}</div></td></tr>\n')
         parts.append('</tbody></table></div>\n')
+        if any(row["other_plans_not_in_bundle"] and tally.parse_claim(row["claim"])["plan_number"] == 1 for row in rows):
+            parts.append('<p class="note">Some claims count other plans in the same repo. A board entry holds one plan, '
+                         'so those plans are not part of it and were not checked here.</p>\n')
     else:
         parts.append('<p class="note">No entries have passed verification yet.</p>\n')
     if excluded:

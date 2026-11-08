@@ -136,3 +136,29 @@ def test_group_text_is_escaped(tmp_path):
     page = (out / "index.html").read_text()
     assert "<script" not in page.lower() and "<img" not in page
     assert "&lt;script&gt;" in page
+
+
+def test_other_plans_note_only_where_the_entry_shows_them(tmp_path):
+    from test_ledger import Project
+    (tmp_path / "single").mkdir()
+    reg, _ = make_registry(tmp_path / "single")
+    board.build(reg, tmp_path / "single-site")
+    page = (tmp_path / "single-site" / "index.html").read_text()
+    assert "not part of this entry" not in page and "not part of it" not in page
+    project = Project(tmp_path, [{"stdout": "tallylock: score=0.5\n"}, {"stdout": "tallylock: score=0.6\n"}])
+    first = project.plan()
+    project.run(first)
+    project.git.head = "b2" * 20
+    second = project.plan()
+    project.run(second)
+    reg = tmp_path / "reg"
+    registry.add_entry(reg, project.repo, first.plan_id, {**META, "title": "First"})
+    registry.add_entry(reg, project.repo, second.plan_id, {**META, "title": "Second"})
+    out = tmp_path / "site"
+    board.build(reg, out)
+    page = (out / "index.html").read_text()
+    # The second plan's locked number proves an earlier plan exists; the first only has the claimed count.
+    assert page.count("not part of this entry") == 1
+    assert "This is plan 2 from its repo. The earlier plans are not part of this entry." in page
+    assert page.count("not part of it") == 1
+    assert page.index("not part of it") > page.index("</table>")

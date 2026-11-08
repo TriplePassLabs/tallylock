@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     env:
       PIP_NO_INPUT: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'

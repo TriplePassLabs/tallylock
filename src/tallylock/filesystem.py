@@ -165,7 +165,7 @@ class Directory:
         if self._fd is not None:
             raise TallyLockError("directory is already open", code=5)
         if not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")):
-            raise TallyLockError("safe descriptor-relative filesystem primitives are unsupported", code=4)
+            raise TallyLockError("TallyLock writes files only on Linux. On Windows, use WSL or a Linux container", code=4)
         try:
             self._fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         except OSError as error:
