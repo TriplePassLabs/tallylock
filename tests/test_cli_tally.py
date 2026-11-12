@@ -141,6 +141,24 @@ def test_check_online_confirms_completed_heads_and_names_pending_ones(anchored, 
     assert "Head 2: Bitcoin proof pending, run tallylock refresh." in text
 
 
+def test_check_online_fails_when_the_newest_proof_was_skipped_unchecked(anchored, repo, capsys, monkeypatch):
+    # A proof naming more blocks than one check covers is skipped; it must not pass as checked.
+    from opentimestamps.core.op import OpSHA256
+    from opentimestamps.core.serialize import BytesSerializationContext
+    from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
+    plan_id = anchored["plan_id"]
+    stamp = Timestamp(bytes.fromhex(ledger.ledger_head(repo, plan_id)))
+    for height in range(1, headers.MAX_HEIGHTS + 2):
+        stamp.attestations.add(BitcoinBlockHeaderAttestation(height))
+    ctx = BytesSerializationContext()
+    DetachedTimestampFile(OpSHA256(), stamp).serialize(ctx)
+    (repo / ".tallylock" / "plans" / plan_id / "ledger-head-2.ots").write_bytes(ctx.getbytes())
+    online(monkeypatch, synthetic_chain({1: anchored["root"]}, 110))
+    code, verdict, _ = call(capsys, "check", "--json", "--online", anchored["claim"])
+    assert [item["state"] for item in verdict["timestamps"]["heads"]] == ["checked", "skipped"]
+    assert code == 3
+
+
 def test_check_online_reports_disagreeing_providers_as_a_failure(anchored, capsys, monkeypatch):
     maps = synthetic_chain({1: anchored["root"]}, 110)
     maps[MEMPOOL]["/block-height/101"] = "00" * 32

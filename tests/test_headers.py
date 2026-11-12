@@ -267,14 +267,59 @@ def never(url, *, deadline):
     raise AssertionError("offline re-check must not fetch")
 
 
+def modern_proof():
+    """A proof naming block 840000 for that block's own merkle root, so saved evidence for it can be re-checked."""
+    root = CBlockHeader.deserialize(bytes.fromhex(header_at(RECORDED["providers"][MEMPOOL], 840000))).hashMerkleRoot
+    stamp = Timestamp(root)
+    stamp.attestations.add(BitcoinBlockHeaderAttestation(840000))
+    ctx = BytesSerializationContext()
+    DetachedTimestampFile(OpSHA256(), stamp).serialize(ctx)
+    return ctx.getbytes(), root.hex()
+
+
 def test_saved_evidence_rechecks_offline_without_any_fetch():
-    evidence, _ = observe()
+    evidence, _ = observe(heights=(840000,))
     saved = canonical.loads(canonical.dumps(evidence))
-    output = api().verify_proof(PROOF, PROOF_DIGEST, evidence=saved, fetch=never, now=lambda: OBSERVED + 86400)
-    assert output["anchor"]["state"] == "anchored" and output["anchor"]["height"] == 358391
+    proof, digest = modern_proof()
+    output = api().verify_proof(proof, digest, evidence=saved, fetch=never, now=lambda: OBSERVED + 86400)
+    assert output["anchor"]["state"] == "anchored" and output["anchor"]["height"] == 840000
+    # Saved evidence counts the headers it carries, not the tip it reports.
+    assert output["anchor"]["confirmations"] == 11
     assert output["freshness"] == {"state": "as_observed", "label": "as observed at 2026-11-07T21:31:50Z",
                                    "observed_at": "2026-11-07T21:31:50Z", "age_seconds": 86400}
     assert output["evidence"] == saved
+
+
+def test_saved_evidence_for_cheap_old_blocks_is_refused_offline():
+    # One header of 2015-era work costs little to mine, so a saved file cannot vouch for it.
+    evidence, _ = observe()
+    saved = canonical.loads(canonical.dumps(evidence))
+    message = failure(lambda: api().verify_proof(PROOF, PROOF_DIGEST, evidence=saved, fetch=never), 3)
+    assert "re-check online" in message
+    online = api().verify_proof(PROOF, PROOF_DIGEST, blocks_on_top=10, fetch=Fetch(replies()), sleep=Clock().sleep,
+                                now=lambda: OBSERVED)
+    assert online["anchor"]["state"] == "anchored"
+
+
+def test_saved_evidence_cannot_claim_confirmations_it_has_no_headers_for():
+    # A forger mines one header and writes any tip; only the headers in the file count.
+    evidence, _ = observe(heights=(840000,))
+    forged = deepcopy(evidence)
+    forged.update(blocks_on_top=0, segments=[{"start": 840000, "headers": evidence["segments"][0]["headers"][:1]}],
+                  answers={p: {"840000": evidence["answers"][p]["840000"]} for p in evidence["providers"]})
+    assert api().check(forged).view.block(840000).confirmations == 974990 - 840000 + 1
+    assert api().check(forged, saved=True).view.block(840000).confirmations == 1
+    proof, digest = modern_proof()
+    output = api().verify_proof(proof, digest, evidence=forged, fetch=never, now=lambda: OBSERVED)
+    assert output["anchor"]["state"] == "insufficient_confirmations"
+
+
+def test_difficulty_one_headers_far_past_the_table_are_refused():
+    # Chained 4x steps once let a header 26 periods past the table use difficulty 1 (2^32 work to forge).
+    height = (len(api().DIFFICULTY) + 25) * api().PERIOD
+    assert "too easy" in failure(lambda: api()._difficulty(height, 0x1D00FFFF, {}), 2)
+    last = api().DIFFICULTY[-1]
+    api()._difficulty(height, last, {})
 
 
 def test_attested_root_must_match_the_header():
@@ -282,8 +327,8 @@ def test_attested_root_must_match_the_header():
     stamp.attestations.add(BitcoinBlockHeaderAttestation(358391))
     ctx = BytesSerializationContext()
     DetachedTimestampFile(OpSHA256(), stamp).serialize(ctx)
-    evidence, _ = observe()
-    message = failure(lambda: api().verify_proof(ctx.getbytes(), "12" * 32, evidence=evidence, fetch=never), 2)
+    message = failure(lambda: api().verify_proof(ctx.getbytes(), "12" * 32, blocks_on_top=10, fetch=Fetch(replies()),
+                                                 sleep=Clock().sleep, now=lambda: OBSERVED), 2)
     assert "contradicts the proof" in message
 
 
@@ -366,6 +411,7 @@ def synthetic_chain(roots, tip, bits=lambda height: REGTEST_BITS):
 
 @pytest.fixture
 def regtest(monkeypatch):
+    monkeypatch.setattr(api(), "SAVED_FLOOR_HEIGHT", 0)
     monkeypatch.setattr(api(), "POW_LIMIT", api().compact_target(REGTEST_BITS))
     monkeypatch.setattr(api(), "DIFFICULTY", (REGTEST_BITS,))
 

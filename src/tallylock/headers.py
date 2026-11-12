@@ -28,6 +28,8 @@ MAX_REPLY_BYTES = 256
 POW_LIMIT = (1 << 224) - 1
 PERIOD = 2016
 MAX_PERIODS_PAST_TABLE = 26
+# Saved evidence is only as good as its work: below this height one header costs too little to mine.
+SAVED_FLOOR_HEIGHT = 840000
 DIFFICULTY_FORMAT = "tallylock.difficulty-table.v1"
 CONSENSUS = "full consensus not validated"
 _KEYS = {"format", "observed_at", "providers", "heights", "blocks_on_top", "tips", "segments", "answers",
@@ -85,6 +87,9 @@ def _difficulty(height: int, bits: int, known: dict) -> None:
     # Compact encoding truncates each retarget slightly below old/4, so allow that rounding.
     _require(new <= old * 4 ** steps and new * 4 ** steps * 2 ** 15 >= old * (2 ** 15 - steps),
              f"header at height {height} changes difficulty by more than the consensus limit")
+    # Past the table, work may not fall below a quarter of the last known period, or headers become cheap to mine.
+    _require(new <= compact_target(DIFFICULTY[last]) * 4,
+             f"header at height {height} is too easy compared with the known difficulty")
     known[period] = bits
 
 
@@ -232,10 +237,13 @@ def _shape(value):
         for table in answers.values()), "provider evidence has invalid provider answers")
 
 
-def check(evidence: dict) -> Checked:
-    """Re-check saved or fresh evidence offline: work, links and provider agreement."""
+def check(evidence: dict, *, saved: bool = False) -> Checked:
+    """Re-check evidence offline: work, links and agreement; saved evidence counts only its own recent headers."""
     value = canonical.loads(canonical.dumps(evidence))
     _shape(value)
+    if saved:
+        _require(all(h >= SAVED_FLOOR_HEIGHT for h in value["heights"]),
+                 f"saved evidence cannot vouch for blocks below height {SAVED_FLOOR_HEIGHT}; re-check online", 3)
     tip = min(t["height"] for t in value["tips"])
     ranges = _ranges(value["heights"], value["blocks_on_top"], tip)
     _require([[s["start"], s["start"] + len(s["headers"]) - 1] for s in value["segments"]] == ranges,
@@ -243,6 +251,7 @@ def check(evidence: dict) -> Checked:
     blocks, known = {}, {}
     for segment in value["segments"]:
         previous = None
+        top = segment["start"] + len(segment["headers"]) - 1 if saved else tip
         for offset, text in enumerate(segment["headers"]):
             height = segment["start"] + offset
             raw = bytes.fromhex(text)
@@ -255,7 +264,7 @@ def check(evidence: dict) -> Checked:
             _require(previous is None or parsed.hashPrevBlock == previous,
                      f"header at height {height} does not link to the previous header")
             previous = digest
-            blocks[height] = CachedBlock(height, b2lx(digest), raw, tip - height + 1, parsed.nTime, parsed.hashMerkleRoot)
+            blocks[height] = CachedBlock(height, b2lx(digest), raw, top - height + 1, parsed.nTime, parsed.hashMerkleRoot)
     expected = {str(h) for pair in ranges for h in pair}
     for provider, table in value["answers"].items():
         _require(set(table) == expected, f"provider evidence lacks answers from {provider}")
@@ -294,7 +303,7 @@ def verify_proof(data: bytes | None, expected_sha256: str, *, evidence: dict | N
         heights = [] if data is None else anchors.inspect(data, expected_sha256)["bitcoin_heights"]
         if heights:
             evidence = observe(heights, now=now, **options)
-    checked = None if evidence is None else check(evidence)
+    checked = None if evidence is None else check(evidence, saved=offline)
     anchor = anchors.verify(data, expected_sha256, None if checked is None else checked.view,
                             minimum_confirmations=minimum_confirmations)
     fresh = None if checked is None else freshness(

@@ -125,4 +125,6 @@ tallylock adapters import inspect logs/run.eval                    # Inspect AI 
 tallylock export PLAN --format intoto --out statement.json         # sign with cosign attest-blob
 ```
 
+Anyone can write an evidence file, so a saved one counts only the block headers it carries and only for blocks from height 840,000 on. Check a receipt someone else sent you with `--online`.
+
 `--online` checks the block that holds your timestamp and the 100 blocks after it against the real difficulty of the network, and requires two public services to agree. It does not validate full network consensus. A setup file records the dataset, harness, model and decoding settings so `compare` can tell whether two results are comparable. Bundles include the full output of every run: read them before you publish. See [COMPARISON.md](COMPARISON.md) for how TallyLock relates to other tools and [RECEIPT_REQUEST.md](RECEIPT_REQUEST.md) for text reviewers can paste into a review. `tallylock capabilities` lists every command for AI assistants, and `tallylock agent-guide` prints their guide.

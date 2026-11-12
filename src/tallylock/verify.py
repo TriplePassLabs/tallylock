@@ -235,7 +235,7 @@ def _provider_anchors(report: _Report, proofs: dict, evidence: dict | None, fetc
         if not offline and heights:
             evidence = headers.observe(sorted(heights), **({} if fetch is None else {'fetch': fetch}))
         if evidence is not None:
-            checked = headers.check(evidence)
+            checked = headers.check(evidence, saved=offline)
             view = checked.view
             report.value['provider_pow'] = dict(checked.summary)
             report.evidence = evidence

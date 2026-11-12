@@ -211,3 +211,37 @@ def test_failed_runs_and_bitcoin_state_show_in_the_record(tmp_path):
     assert [attempt["outcome"] for attempt in row["attempts"]].count("completed") == 2
     if row["bitcoin"]:
         assert "Bitcoin timestamp" in page
+
+
+def test_record_counts_tsa_services_by_signer_and_does_not_claim_unchecked_blocks(tmp_path, monkeypatch):
+    from tallylock import rfc3161
+    reg, plan = make_registry(tmp_path)
+    folder = reg / "entries" / plan.plan_id / ".tallylock" / "plans" / plan.plan_id
+    # One token copied under two service names is still one service.
+    for name in ("ledger-head-3.freetsa.org.tsr", "ledger-head-3.timestamp.digicert.com.tsr"):
+        (folder / name).write_bytes(b"same token")
+    monkeypatch.setattr(rfc3161, "verify", lambda data, digest, **_: {"time": "2026-11-07T00:00:00Z", "tsa": "One TSA"})
+    # A proof that only names a block costs nothing to write; the page must not call it checked.
+    from opentimestamps.core.notary import BitcoinBlockHeaderAttestation
+    from opentimestamps.core.op import OpSHA256
+    from opentimestamps.core.serialize import BytesSerializationContext
+    from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
+    from tallylock import ledger
+    stamp = Timestamp(bytes.fromhex(ledger.ledger_head(folder.parents[2], plan.plan_id)))
+    stamp.attestations.add(BitcoinBlockHeaderAttestation(974785))
+    ctx = BytesSerializationContext()
+    DetachedTimestampFile(OpSHA256(), stamp).serialize(ctx)
+    (folder / "ledger-head-3.ots").write_bytes(ctx.getbytes())
+    out = tmp_path / "site"
+    board.build(reg, out)
+    page = (out / "index.html").read_text()
+    assert "2 of 2 verified from 1 public service " in page
+    # The registry cannot check the trust label, so the page says whose word it is.
+    assert '<span class="tag">anchored</span> <span class="by">(as the submitter declared it)</span>' in page
+    assert "naming Bitcoin block 974,785" in page and "This page did not check the blocks" in page
+    # A proof of an older head only covers the runs before it.
+    (folder / "ledger-head-3.ots").rename(folder / "ledger-head-1.ots")
+    monkeypatch.setattr(ledger.anchors, "verify", lambda *a, **k: {"state": "insufficient_chain", "required_heights": [974785]})
+    board.build(reg, out)
+    page = (out / "index.html").read_text()
+    assert "naming Bitcoin block" not in page and "newest ledger update has no Bitcoin proof yet" in page

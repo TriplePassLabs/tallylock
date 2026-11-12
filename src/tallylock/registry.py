@@ -92,10 +92,14 @@ def _meta(meta: dict) -> dict:
 
 def _check_entry(root: Path, plan_id: str, claim: str) -> dict:
     """Verify the ledger and the claim; a bundle holds one plan, so the plan count is noted, not rechecked."""
-    ledger.verify_ledger(root, plan_id)
+    checked = ledger.verify_ledger(root, plan_id)
     verdict = tally.check_claim(root, claim, bundle=True)
     if verdict["plan_id"] != plan_id:
         return {"ok": False, "reason": "the claim names a different plan"}
+    if verdict["verdict"] == "match" and verdict["seq"] != checked["entries"]:
+        # An older head is a true claim about fewer runs; the board must show every run, so it needs the latest.
+        return {"ok": False, "reason": f"the claim covers {verdict['seq']} of {checked['entries']} runs; "
+                                       "claim the latest ledger head"}
     if verdict["verdict"] == "match":
         return {"ok": True, "other_plans_not_in_bundle": tally.parse_claim(claim)["plans"] > 1}
     item = verdict["reasons"][0]

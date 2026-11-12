@@ -248,7 +248,7 @@ def _row(item: dict, root: Path) -> dict:
             "other_plans_not_in_bundle": item["other_plans_not_in_bundle"],
             "recheck": recheck_command(entry["plan_id"], entry["claim"]),
             "attempts": attempts, "setup": info.get("setup"), "head": info.get("head"), "argv": info.get("argv"),
-            "instant_timestamps": [{k: s[k] for k in ("seq", "tsa", "state", "time")} for s in checked["instant_timestamps"]],
+            "instant_timestamps": [{k: s[k] for k in ("seq", "tsa", "state", "time", "signer")} for s in checked["instant_timestamps"]],
             "bitcoin": [{"seq": a["seq"], "state": a["state"], "heights": a["heights"]} for a in checked["anchors"]],
             "_scores": [_fraction(e["score"]) for e in checked["ledger"] if e["outcome"] == "completed" and e["score"] is not None]}
 
@@ -370,17 +370,23 @@ def _timeline(row):
     good = [s for s in stamps if s["state"] == "verified" and s["time"]]
     if stamps:
         times = sorted(s["time"] for s in good)
-        services = len({s["tsa"] for s in stamps})
+        # The service name in a token's file name is not signed; count the certificates that verified.
+        services = len({s["signer"] for s in good})
         span = f' from {_when(times[0])} to {_when(times[-1])}' if times else ""
         steps.append(("done" if len(good) == len(stamps) else "wait", "Instant timestamps",
                       f'{len(good)} of {len(stamps)} verified from {services} public service{"s" if services != 1 else ""}{span}.'))
     proofs = row["bitcoin"]
     if proofs:
         heights = sorted({h for p in proofs for h in p["heights"]})
-        if heights and all(p["heights"] for p in proofs):
+        # Only the newest head covers every run; proofs of older heads say nothing about later runs.
+        if not any(p["seq"] == len(row["attempts"]) for p in proofs):
+            steps.append(("wait", "Bitcoin timestamp", 'The newest ledger update has no Bitcoin proof yet, so the latest runs '
+                          'are not timestamped. Add one with <span class="mono">tallylock refresh</span>.'))
+        elif heights and all(p["heights"] for p in proofs):
             blocks = ", ".join(f"{h:,}" for h in heights)
-            steps.append(("done", "Bitcoin timestamp", f'Every ledger update is in Bitcoin block {blocks}. '
-                          'Check the blocks with <span class="mono">tallylock check --online</span>.'))
+            # Building the page reads the proofs offline; it never checks that the named blocks exist.
+            steps.append(("done", "Bitcoin timestamp", f'Every ledger update has a proof naming Bitcoin block {blocks}. '
+                          'This page did not check the blocks; check them with <span class="mono">tallylock check --online</span>.'))
         else:
             waiting = sum(1 for p in proofs if not p["heights"])
             steps.append(("wait", "Bitcoin timestamp", f'{waiting} of {len(proofs)} proofs still waiting for a Bitcoin block. '
@@ -415,7 +421,7 @@ def _entry(row, rank, axis, peers, slug, names):
     versus = "".join(f'<span class="chip {css}">{text}</span>' for css, text in (_verdict(row, other, names) for other in peers))
     facts = [("Score", _cell(_score(row))), ("Best run", f'{_cell(row["best"])} <span class="by">(not the score)</span>'),
              ("Runs", f'{row["runs"]} recorded, {row["failed"]} failed'), ("Model", _cell(model or "not recorded")),
-             ("Trust", f'<span class="tag">{_cell(row["trust"])}</span>'),
+             ("Trust", f'<span class="tag">{_cell(row["trust"])}</span> <span class="by">(as the submitter declared it)</span>'),
              ("Source", f'{_cell(row["source"])}, by {_cell(row["submitted_by"])}')]
     panel = [f'<p class="fulltitle">{_cell(row["title"])}</p>' if shown != row["title"] else "",
              f'<div class="runs"><h3>Every run</h3>{_track(row, axis, runs=True)}{fails}</div>',

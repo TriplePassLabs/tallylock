@@ -593,6 +593,12 @@ def _online(report, repo, plan_id):
     report['timestamps'] = ledger.check_heads_online(repo, plan_id)
     if any(item['state'] in ('failed', 'too_few_confirmations') for item in report['timestamps']['heads']):
         report['code'] = 3
+    # A skipped proof was never checked; it passes only when a newer head, which covers it, was checked.
+    covered = False
+    for item in reversed(report['timestamps']['heads']):
+        covered = covered or item['state'] == 'checked'
+        if item['state'] == 'skipped' and not covered:
+            report['code'] = 3
 
 
 def _plan_id(repo, prefix):

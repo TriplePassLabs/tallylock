@@ -63,6 +63,22 @@ def test_add_entry_stores_bundle_and_entry_json(tmp_path):
     assert report["entries"][0]["plan_id"] == plan.plan_id and report["entries"][0]["ok"] is True
 
 
+def test_a_claim_at_an_earlier_ledger_head_is_refused(tmp_path):
+    # Picking the head where the numbers looked best would hide the later runs behind the board's headline.
+    project, plan, _ = three_runs(tmp_path)
+    entries = ledger.verify_ledger(project.repo, plan.plan_id)["ledger"]
+    early = tally.format_claim_fields(tally._fields(tally._summary(plan.plan_id, 1, entries[:1]), 1))
+    assert tally.check_claim(project.repo, early)["verdict"] == "match"
+    with pytest.raises(TallyLockError) as error:
+        registry.add_entry(tmp_path / "reg", project.repo, plan.plan_id, {**META, "claim": early})
+    assert "covers 1 of 3 runs" in error.value.message
+    reg = tmp_path / "reg2"
+    registry.add_entry(reg, project.repo, plan.plan_id, META)
+    entry = json.loads((reg / "entries" / plan.plan_id / "entry.json").read_text())
+    (reg / "entries" / plan.plan_id / "entry.json").write_text(json.dumps({**entry, "claim": early}))
+    assert registry.verify_registry(reg)["failed"] == 1
+
+
 def test_add_entry_accepts_an_exported_bundle(tmp_path):
     project, plan, _ = three_runs(tmp_path)
     bundle = tmp_path / "bundle"
