@@ -96,7 +96,7 @@ def test_json_shape_is_unchanged_by_the_flag(tmp_path):
 
 def test_help_and_version_are_unchanged(tmp_path):
     assert 'usage:' in launch('--help', tty=True)
-    assert launch('--version', tty=True).strip() == '0.1.0a4'
+    assert launch('--version', tty=True).strip() == '0.1.0a5'
     assert 'usage:' in launch('verify', '--help')
 
 

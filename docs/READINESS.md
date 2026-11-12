@@ -1,6 +1,6 @@
 # Standalone CLI candidate readiness audit
 
-Status: standalone implementation and local distribution matrix pass; whole-candidate runtime re-review approved. Independently verified live anchoring, the gated fresh-launch experiment and final delivery remain open. Version 0.1.0a4 is published on PyPI as an alpha, with no production-readiness claim. Passing counts are scoped evidence, not a substitute for the requirements below.
+Status: standalone implementation and local distribution matrix pass; whole-candidate runtime re-review approved. Independently verified live anchoring, the gated fresh-launch experiment and final delivery remain open. Version 0.1.0a5 is published on PyPI as an alpha, with no production-readiness claim. Passing counts are scoped evidence, not a substitute for the requirements below.
 
 The user objective is a rigorously critiqued standalone TallyLock CLI ready for external research-session testing, followed by a testing handoff and documented feedback before public stable release. Research projects are ordinary external consumers. The goal remains active until the testing boundary is actually satisfied; it is not reduced to primitives or a fixture demo.
 

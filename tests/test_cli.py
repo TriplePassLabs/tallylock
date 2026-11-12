@@ -61,8 +61,8 @@ def test_help(args, tmp_path):
 
 
 def test_version_entrypoints_and_passive_import(tmp_path):
-    assert run('--version').strip() == '0.1.0a4'
-    assert run('--version', entry=True).strip() == '0.1.0a4'
+    assert run('--version').strip() == '0.1.0a5'
+    assert run('--version', entry=True).strip() == '0.1.0a5'
     result = subprocess.run([sys.executable, '-c',
         "import tallylock,sys; from importlib.metadata import version; "
         "assert tallylock.__version__ == version('tallylock'); "

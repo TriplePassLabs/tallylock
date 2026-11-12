@@ -19,7 +19,7 @@ pipx install tallylock        # or: uv tool install tallylock
 tallylock --version
 ```
 
-Version `0.1.0a4` is an alpha for Linux with Python 3.11 through 3.14, published with trusted publishing and signed provenance. On Windows, use WSL or a Linux container: commands that write files need Linux, and `tallylock doctor` says so. For offline installs from a reviewed wheel or source checkout, see the [quickstart](docs/QUICKSTART.md). On Ubuntu or Debian, a plain venv needs the matching venv package, for example `python3.12-venv`.
+Version `0.1.0a5` is an alpha for Linux with Python 3.11 through 3.14, published with trusted publishing and signed provenance. On Windows, use WSL or a Linux container: commands that write files need Linux, and `tallylock doctor` says so. For offline installs from a reviewed wheel or source checkout, see the [quickstart](docs/QUICKSTART.md). On Ubuntu or Debian, a plain venv needs the matching venv package, for example `python3.12-venv`.
 
 ## Record every run
 
